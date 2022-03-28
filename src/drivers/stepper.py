@@ -1,12 +1,16 @@
 from math import pi
-import RPi.GPIO as GPIO
+from typing import Literal, Union
+try:
+    import RPi.GPIO as GPIO
+except:
+    pass
 import time
 
 # https://github.com/gavinlyonsrepo/RpiMotorLib/blob/master/Documentation/Nema11A4988.md
 
 
 class StepperMotor:
-    def __init__(self, resolution: str = "Full") -> None:
+    def __init__(self, id: Union[Literal["left"], Literal["right"]], resolution: str = "Full") -> None:
         self.direction_pin = 20
         self.step_pin = 21
         self.mode_pins = (14, 15, 18)
@@ -60,7 +64,7 @@ class StepperMotor:
 
         self.last_transition = True
 
-        if clockwise != self.step_pin:
+        if clockwise != self.spin:
             self.spin = clockwise
             GPIO.output(self.direction_pin, self.spin)
 

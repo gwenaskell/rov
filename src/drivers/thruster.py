@@ -1,8 +1,7 @@
-
-import pigpio  # importing GPIO library
-import os  # importing os library so as to communicate with the system
-import time  # importing time library to make Rpi wait because its too impatient
-
+import os
+from typing import Literal, Union
+import pigpio
+import time
 
 # TODO  sudo pigpio should be executed before importing it
 
@@ -10,21 +9,21 @@ ESC = 4  # Connect the ESC in this GPIO pin
 
 
 class Thruster:
-    def __init__(self) -> None:
+    def __init__(self, id: Union[Literal["left"], Literal["right"], Literal["tail"]]) -> None:
         self.max_value = 2000.0
         self.min_value = 700.0
         self.zero_value = 1000.0
         self.pi = pigpio.pi()
         self.armed = False
-        self.ratio = 0
+        self.perc = 0
 
-    def set_pwm(self, ratio: float):
+    def set_pwm(self, perc: int):
         if not self.armed:
-            raise Exception("thruster not armed")
-        if self.ratio == ratio:
+            raise RuntimeError("thruster not armed")
+        if self.perc == perc:
             return
-        self.ratio = ratio
-        speed = ratio * (self.max_value-self.zero_value) + \
+        self.ratio = perc
+        speed = perc * (self.max_value-self.zero_value) + \
             self.zero_value  # TODO handle negatives
         self.pi.set_servo_pulsewidth(ESC, speed)
 
@@ -42,3 +41,4 @@ class Thruster:
     def stop(self):
         self.pi.set_servo_pulsewidth(ESC, 0)
         self.pi.stop()
+        self.armed = False

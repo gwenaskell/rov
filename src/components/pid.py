@@ -1,4 +1,3 @@
-from .mainloop import Inputs
 from .imu import RovState
 from .pilot import Commands
 
@@ -12,5 +11,5 @@ class PID:
         self.Ki = Ki
         self.Kd = Kd
 
-    def get_correction(self, delta_s: float, state: RovState, inputs: Inputs) -> Commands:
+    def get_correction(self, delta_s: float, state: RovState, inputs) -> Commands:
         return Commands(0, 0, 0, 0, 0)

@@ -1,11 +1,16 @@
+from multiprocessing import Manager, Process
 from dataclasses import dataclass
 import math
-from threading import Condition, Event, Lock, Thread
+from threading import Thread
 import time
 from typing import Optional, Tuple
+import typing
+
+from .utils.countdown import CountDownLatch
 from ..drivers.thruster import Thruster
 from ..drivers.stepper import StepperMotor
-from math import sin, cos, atan, acos, pi
+from math import sin, cos, atan, pi
+from src.drivers.mock.plot import plotter
 
 
 @dataclass
@@ -15,15 +20,13 @@ class Commands:
     cx: float  # roll
     cy: float  # pitch
     cz: float  # yaw
+    tm: int
 
 
 @dataclass
 class ThrusterVector:  # thrust vector of a front (left/right) thruster
-    f_x: float  # thurst on x axis
+    f_x: float  # thrust on x axis
     f_z: float  # thrust on z axis
-
-
-_nb_steps = 200
 
 
 @dataclass
@@ -38,21 +41,16 @@ class Pilot:
     """Pilot handles conversion of the input commands expressed in terms of thrust and moment on (x, y, z)
     into instructions for the motors.
 
-    The thrusters are updated progressively in a separate thread, by periodically checking the desired state
-    and incrementally moving the thrusters towards this state.
+    The thrusters are updated progressively in a separate process using the SetpointsTracker, by periodically 
+    checking the desired state and incrementally moving the thrusters towards this state.
     """
 
     def __init__(self) -> None:
-        self.thruster_left = ThrusterController(Thruster(), StepperMotor())
+        self.tracker = SetpointsTracker()
         self.left_reversed = False
-        self.thruster_right = ThrusterController(Thruster(), StepperMotor())
         self.right_reversed = False
-        self.thruster_tail = Thruster()
 
-        self.tail_thrust, self.tail_target_thrust = 0.0, 0.0
-
-        # both steppers have the same step time
-        self.min_step_time = self.thruster_left.step_time_ms
+        self.nb_stepper_steps = self.tracker.get_nb_steps()
 
         self.eps = 0.15  # minimum vertical thrust to maintain the ROV underwater
         self.reverse_efficiency = 0.9
@@ -62,37 +60,43 @@ class Pilot:
         # angle threshold to switch to reverse thrust
         self.reverse_threshold = 50.0/180*pi + pi/2
 
-        self.sharedlock = Lock()
-
-        self.apply_setpoints(Commands(0.0, 0.0, 0.0, 0.0, 0.0))
-
         self.stopped = True
 
-        self.tail_loop_thread = None
+        self.tracker_process = typing.cast(Process, None)
+
+        self.states_proxy = typing.cast(dict, None)
 
     def start(self):
         if not self.stopped:
-            raise Exception("pilot already running")
+            raise RuntimeError("pilot already running")
         self.stopped = False
-        self.thruster_left.launch(self.sharedlock, self.thruster_right)
-        self.thruster_right.launch(self.sharedlock, self.thruster_left)
-        self.tail_loop_thread = Thread(target=self.tail_thruster_loop)
-        self.tail_loop_thread.start()
+
+        manager = Manager()
+        self.states_proxy = manager.dict({
+            "stopped": False,
+            "targets": {
+                "tail_thrust": 0,
+                "left_state": None,
+                "right_state": None,
+            "tm": round(time.time()*1000),
+            }
+        })
+        self.apply_setpoints(Commands(0.0, 0.0, 0.0, 0.0, 0.0, 0))
+
+        self.tracker_process = Process(
+            target=self.tracker.run, args=(self.states_proxy,))
+        self.tracker_process.start()
+
+    def angle_to_step_index(self, angle: float) -> int:
+        return round(angle*self.nb_stepper_steps/(2*pi))
 
     def stop(self):
         if self.stopped:
-            raise Exception("pilot already stopped")
+            raise RuntimeError("pilot already stopped")
 
         self.stopped = True
-        self.thruster_left.stop()
-        self.thruster_right.stop()
-        if self.tail_loop_thread:
-            self.tail_loop_thread.join()
-        self.thruster_tail.stop()
-
-    def _angle_to_pos(self, angle: float):
-        # both steppers have as many steps, we can use any of both
-        return self.thruster_left.stepper.angle_to_step_index(angle)
+        self.states_proxy["stopped"] = True
+        self.tracker_process.join()
 
     def apply_setpoints(self, commands: Commands):
         """computes the target thrusters states corresponding to these commands."""
@@ -100,23 +104,26 @@ class Pilot:
         # TODO: project self.eps on earth vertical axis
 
         left_thrust = ThrusterVector(
-            bound(commands.fx - commands.cx),
-            bound(commands.fz - commands.cz + commands.cy/2))
+            bound(commands.fx - commands.cz),
+            bound(commands.fz - commands.cx + commands.cy/2))
         right_thrust = ThrusterVector(
-            bound(commands.fx + commands.cx),
-            bound(commands.fz + commands.cz + commands.cy/2))
+            bound(commands.fx + commands.cz),
+            bound(commands.fz + commands.cx + commands.cy/2))
 
         left_target_state, self.left_reversed = self.compute_desired_state(
             left_thrust, self.left_reversed)
         right_target_state, self.right_reversed = self.compute_desired_state(
             right_thrust, self.right_reversed)
 
-        with self.sharedlock:
-            self.tail_target_thrust = bound(
-                commands.fz - commands.cy - self.eps)
+        # print(left_target_state.pos, left_target_state.tau,
+        #       right_target_state.pos, right_target_state.tau)
 
-            self.thruster_left.update_target(left_target_state)
-            self.thruster_right.update_target(right_target_state)
+        self.states_proxy["targets"] = {
+            "tail_thrust": bound(commands.fz - commands.cy - self.eps),
+            "left_state": left_target_state,
+            "right_state": right_target_state,
+            "tm": commands.tm,
+        }
 
     def compute_desired_state(self, vector: ThrusterVector, reverse_spin: bool) -> Tuple[ThrusterState, bool]:
         """mathematical conversion of the thrust vector into angle and thrust"""
@@ -164,7 +171,7 @@ class Pilot:
 
         tau = bound(tau)
 
-        return ThrusterState(tau=tau, pos=self._angle_to_pos(phi), thrust_coef=1.0), reverse_spin
+        return ThrusterState(tau=tau, pos=self.angle_to_step_index(phi), thrust_coef=1.0), reverse_spin
 
     def _reverse(self, phi, tau):
         """returns the opposite state of the thruster that give the exact same thrust.
@@ -180,33 +187,90 @@ class Pilot:
         tau = -tau/self.reverse_efficiency
         return phi, tau
 
-    def tail_thruster_loop(self):
+
+class SetpointsTracker:
+    def __init__(self) -> None:
+        self.thruster_left = ThrusterController(
+            Thruster(id="left"), StepperMotor(id="left"))
+        self.thruster_right = ThrusterController(
+            Thruster(id="right"), StepperMotor(id="right"))
+        self.thruster_tail = Thruster(id="tail")
+
+        self.tail_thrust = 0.0
+
+        self.min_step_time = self.thruster_left.step_time_ms
+
+    def get_nb_steps(self) -> int:
+        return self.thruster_left.stepper.nb_steps
+
+    def run(self, target_states: dict):
+        """run is started in a subprocess. target_state is a multiprocessing proxy"""
+        latch = CountDownLatch(count=3)
+
+        self.thruster_left.launch(self.thruster_right, latch)
+        self.thruster_right.launch(self.thruster_left, latch)
+
         self.thruster_tail.arm_thruster()
-        while not self.stopped:
-            tm = time.time()
+        latch.count_down()
+        latch.wait()
 
-            try:
-                with self.sharedlock:
+        plotter.start_display()
 
-                    if self.tail_thrust != self.tail_target_thrust:
+        self.tail_thruster_loop(target_states)
+
+        plotter.stop_display()
+
+    def tail_thruster_loop(self, target_states: dict):
+        count_to_10 = 0
+
+        target_tail_thrust = 0
+        try:
+            while True:
+                tm = time.time()
+
+                # every 10 iterations, update target state
+                count_to_10 += 1
+                if count_to_10 == 10:
+                    count_to_10 = 0
+                    # withdraw new target states from proxy
+                    if target_states["stopped"]:
+                        print("stopped tracking setpoints")
+                        return
+
+                    targets = target_states["targets"]
+
+                    # if self.thruster_left.target_state != targets["left_state"]:
+                    #     print("delay: ", round(time.time()*1000)-targets["tm"])
+
+                    target_tail_thrust = targets["tail_thrust"]
+                    self.thruster_left.target_state = targets["left_state"]
+                    self.thruster_right.target_state = targets["right_state"]
+                
+
+                try:
+                    if self.tail_thrust != target_tail_thrust:
                         max_delta = max(abs(self.thruster_left.get_delta()), abs(
                             self.thruster_right.get_delta()))
                         if max_delta == 0:
-                            self.tail_thrust = self.tail_target_thrust
+                            self.tail_thrust = target_tail_thrust
                         else:
                             self.tail_thrust = self.tail_thrust + \
-                                (self.tail_target_thrust - self.tail_thrust) * \
+                                (target_tail_thrust - self.tail_thrust) * \
                                 1/max_delta
 
                     applied_thrust = self.tail_thrust * self.thruster_left.get_thrust_coef() * \
                         self.thruster_right.get_thrust_coef()
 
-                self.thruster_tail.set_pwm(applied_thrust)
-            except Exception as e:
-                print(e)
+                    self.thruster_tail.set_pwm(round(applied_thrust*100))
 
-            time.sleep(self.min_step_time+tm - time.time())
-        self.thruster_tail.stop()
+                    time.sleep(self.min_step_time+tm - time.time())
+                except Exception as e:
+                    print(e)
+        finally:
+            self.thruster_left.stop()
+            self.thruster_right.stop()
+            self.thruster_tail.stop()
+            print("stopped all thrusters")
 
 
 class ThrusterController:
@@ -220,7 +284,7 @@ class ThrusterController:
         self.step_time_ms = self.stepper.min_step_time
         self.stopped = True
 
-        self.loop_thread = None
+        self.loop_thread = typing.cast(Thread, None)
 
     def update_target(self, new_target: ThrusterState):
         self.target_state = new_target
@@ -231,28 +295,32 @@ class ThrusterController:
     def get_delta(self) -> int:
         return self.target_state.pos - self.state.pos
 
-    def launch(self, lock: Lock, other: 'ThrusterController'):
+    def launch(self, other: 'ThrusterController', latch: CountDownLatch):
         if not self.stopped:
-            raise Exception("controller already running")
+            print("controller already running")
+            return
         self.stopped = False
-        self.loop_thread = Thread(target=self.left_thruster_trackloop,
-                                  args=(lock, other,))
+
+        self.loop_thread = Thread(target=self.state_tracking_loop,
+                                  args=(other, latch))
+
         self.loop_thread.start()
 
     def stop(self):
-        if self.stopped:
-            raise Exception("controller already stopped")
         self.stopped = True
         if self.loop_thread is not None:
             self.loop_thread.join()
             self.loop_thread = None
 
-    def left_thruster_trackloop(self, lock: Lock, other: 'ThrusterController'):
+    def state_tracking_loop(self, other: 'ThrusterController', latch: CountDownLatch):
+        self.thruster.arm_thruster()
+
+        latch.count_down()
+        latch.wait()
         """This function ensures a smooth transition from the current thruster state to the target state.
 
-        It assumes thrust transition is negligible compared to stepper angle transition.
+        It assumes thrust transition is negligible compared to stepper rotation time.
         """
-        self.thruster.arm_thruster()
         while not self.stopped:
             tm = time.time()
 
@@ -260,35 +328,39 @@ class ThrusterController:
                 speed_coef = 1.0
                 spin = 0
 
-                with lock:
-                    opposite_delta = other.get_delta()
+                opposite_delta = other.get_delta()
+                other_thrust_coef = other.get_thrust_coef()
 
-                    delta = self.target_state.pos - self.state.pos
+                delta = self.target_state.pos - self.state.pos
 
-                    next_state = self.increment_state(
-                        self.state, self.target_state, opposite_delta)
+                next_state = self.increment_state(
+                    self.state, self.target_state, opposite_delta)
 
-                    # reminder: even if state did not change, the state of the other thruster might have
+                # reminder: even if state did not change, the state of the other thruster might have
 
-                    tau = next_state.tau * next_state.thrust_coef * other.get_thrust_coef()
+                tau = next_state.tau * next_state.thrust_coef * other_thrust_coef
 
-                    # warning: do not assign this tau to next_state
+                # warning: do not assign this tau to next_state
 
-                    spin = next_state.pos - self.state.pos  # 1, 0 or -1
+                spin = next_state.pos - self.state.pos  # 1, 0 or -1
 
-                    if spin != 0 and abs(opposite_delta) > abs(delta):
-                        speed_coef = abs(delta) / abs(opposite_delta)
-                        # avoid sleeping too long if we have a very small move to make while the opposite
-                        # thruster as a long rotation to perform.
-                        #
-                        # We will reach the target position sooner but it ensures we loop frequently enough
-                        # to catch new updates of target state
-                        if speed_coef < 0.1:
-                            speed_coef = 0.1
+                if spin != 0 and abs(opposite_delta) > abs(delta):
+                    speed_coef = abs(delta) / abs(opposite_delta)
+                    # avoid sleeping too long if we have a very small move to make while the opposite
+                    # thruster as a long rotation to perform.
+                    #
+                    # We will reach the target position sooner but it ensures we loop frequently enough
+                    # to catch new updates of target state
+                    if speed_coef < 0.1:
+                        speed_coef = 0.1
 
-                    self.state = next_state
+                # if next_state != self.state:
+                #     print(next_state)
 
-                self.thruster.set_pwm(tau)  # do not use next_state.tau
+                self.state = next_state
+
+                # do not use next_state.tau
+                self.thruster.set_pwm(round(tau*100))
 
                 if spin != 0:
                     clockwise = spin > 0
@@ -312,7 +384,6 @@ class ThrusterController:
         self.stepper.stop()
 
     def increment_state(self, current: ThrusterState, target: ThrusterState, opposite_delta: int) -> ThrusterState:
-
         new = ThrusterState(tau=current.tau, pos=current.pos, thrust_coef=1.0)
 
         if current.pos == target.pos and current.tau == target.tau:
@@ -354,7 +425,7 @@ class ThrusterController:
                     new.tau = target.tau
                     new.thrust_coef = cos(delta_phi)
                 else:
-                    # more than a quarter turn to perform while reversing thurst. Turn off thrusters.
+                    # more than a quarter turn to perform while reversing thrust. Turn off thrusters.
                     new.thrust_coef = 0
             else:
                 # more than half a turn to perform. We must turn off thrusters.

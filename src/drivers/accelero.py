@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from mpu6050 import mpu6050
 
 
 @dataclass
@@ -14,6 +13,7 @@ class AccelValue:
 
 class Accelerometer:
     def __init__(self) -> None:
+        from mpu6050 import mpu6050
         self.sensor = mpu6050(0x68)
 
     def get_state(self) -> AccelValue:
