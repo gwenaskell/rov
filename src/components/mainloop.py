@@ -15,7 +15,7 @@ from typing import Optional
 from .imu import IMU
 from .pid import PID
 from .pilot import Commands, Pilot
-
+from asyncio import Queue
 
 @dataclass
 class Inputs:
@@ -34,11 +34,11 @@ class MainLoop:
         self.pid = PID()
         self.pilot = Pilot()
 
-    def connect(self, input_stream: Connection):
+    async def connect(self, inputs_queue: Queue):
         self.pilot.start()
         while True:
             try:
-                i: Optional[GamePad] = input_stream.recv()
+                i: Optional[GamePad] = await inputs_queue.get()
 
                 if not i:
                     return
@@ -48,18 +48,23 @@ class MainLoop:
                 # commands = self.pid.get_correction(0, state, controls)
 
                 commands = Commands(fx=float(i.sticks.leftX)/100, fz=0,
-                                    cx=float(i.sticks.rightY)/100, cy=float(i.sticks.rightX)/100,
-                                    cz=float(i.sticks.leftY)/100, tm=i.tm)
+                                    cx=float(i.sticks.rightY)/100, cy=0,
+                                    cz=-float(i.sticks.leftY)/100, tm=i.tm)
+                
+                if i.buttons.R:
+                    commands.fz = -float(i.sticks.rightX)/100
+                else:
+                    commands.cy = float(i.sticks.rightX)/100
 
                 self.pilot.apply_setpoints(commands)
             except Exception as e:
                 print(e)
 
 
-def run(input_stream: Connection):
+async def run(inputs_queue: Queue):
     loop = MainLoop()
     try:
-        loop.connect(input_stream)
+        await loop.connect(inputs_queue)
     except KeyboardInterrupt:
         pass
     print("mainloop stopped")

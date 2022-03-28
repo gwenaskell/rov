@@ -78,7 +78,7 @@ class Pilot:
                 "tail_thrust": 0,
                 "left_state": None,
                 "right_state": None,
-            "tm": round(time.time()*1000),
+                "tm": round(time.time()*1000),
             }
         })
         self.apply_setpoints(Commands(0.0, 0.0, 0.0, 0.0, 0.0, 0))
@@ -104,11 +104,38 @@ class Pilot:
         # TODO: project self.eps on earth vertical axis
 
         left_thrust = ThrusterVector(
-            bound(commands.fx - commands.cz),
-            bound(commands.fz - commands.cx + commands.cy/2))
+            commands.fx - commands.cz,
+            commands.fz + commands.cx - commands.cy/2)
         right_thrust = ThrusterVector(
-            bound(commands.fx + commands.cz),
-            bound(commands.fz + commands.cx + commands.cy/2))
+            commands.fx + commands.cz,
+            commands.fz - commands.cx - commands.cy/2)
+
+        tail_thrust = commands.fz + commands.cy - self.eps
+
+        left_norm = (left_thrust.f_x**2+left_thrust.f_z**2)**0.5
+
+        if left_norm > 1:
+            left_thrust.f_x /= left_norm
+            left_thrust.f_z /= left_norm
+            right_thrust.f_x /= left_norm
+            right_thrust.f_z /= left_norm
+            tail_thrust /= left_norm
+
+        right_norm = (right_thrust.f_x**2+right_thrust.f_z**2)**0.5
+        if right_norm > 1:
+            left_thrust.f_x /= right_norm
+            left_thrust.f_z /= right_norm
+            right_thrust.f_x /= right_norm
+            right_thrust.f_z /= right_norm
+            tail_thrust /= right_norm
+
+        tail_norm = abs(tail_thrust)
+        if tail_norm > 1:
+            left_thrust.f_x /= tail_norm
+            left_thrust.f_z /= tail_norm
+            right_thrust.f_x /= tail_norm
+            right_thrust.f_z /= tail_norm
+            tail_thrust /= tail_norm
 
         left_target_state, self.left_reversed = self.compute_desired_state(
             left_thrust, self.left_reversed)
@@ -119,7 +146,7 @@ class Pilot:
         #       right_target_state.pos, right_target_state.tau)
 
         self.states_proxy["targets"] = {
-            "tail_thrust": bound(commands.fz - commands.cy - self.eps),
+            "tail_thrust": tail_thrust,
             "left_state": left_target_state,
             "right_state": right_target_state,
             "tm": commands.tm,
@@ -245,7 +272,6 @@ class SetpointsTracker:
                     target_tail_thrust = targets["tail_thrust"]
                     self.thruster_left.target_state = targets["left_state"]
                     self.thruster_right.target_state = targets["right_state"]
-                
 
                 try:
                     if self.tail_thrust != target_tail_thrust:
@@ -258,12 +284,12 @@ class SetpointsTracker:
                                 (target_tail_thrust - self.tail_thrust) * \
                                 1/max_delta
 
-                    applied_thrust = self.tail_thrust * self.thruster_left.get_thrust_coef() * \
+                    self.tail_thrust = self.tail_thrust * self.thruster_left.get_thrust_coef() * \
                         self.thruster_right.get_thrust_coef()
 
-                    self.thruster_tail.set_pwm(round(applied_thrust*100))
+                    self.thruster_tail.set_pwm(round(self.tail_thrust*100))
 
-                    time.sleep(self.min_step_time+tm - time.time())
+                    sleep("tail", self.min_step_time+tm - time.time())
                 except Exception as e:
                     print(e)
         finally:
@@ -338,7 +364,7 @@ class ThrusterController:
 
                 # reminder: even if state did not change, the state of the other thruster might have
 
-                tau = next_state.tau * next_state.thrust_coef * other_thrust_coef
+                next_state.tau = next_state.tau * other_thrust_coef
 
                 # warning: do not assign this tau to next_state
 
@@ -360,16 +386,22 @@ class ThrusterController:
                 self.state = next_state
 
                 # do not use next_state.tau
-                self.thruster.set_pwm(round(tau*100))
+                self.thruster.set_pwm(round(next_state.tau*100))
 
                 if spin != 0:
                     clockwise = spin > 0
                     sleep_time = (self.step_time_ms/2) / speed_coef
 
-                    time.sleep(sleep_time + tm - time.time())
+                    sleep_remaining = sleep_time + tm - time.time()
+                    offset = 0.0
+                    if sleep_remaining < 0:
+                        offset = -sleep_remaining
+                        sleep_remaining = 0
+
+                    time.sleep(sleep_remaining)
                     self.stepper.bring_sally_up(clockwise)
 
-                    time.sleep(sleep_time)
+                    time.sleep(sleep_time-offset)  # offset is <= 0
                     self.stepper.bring_sally_down()
 
                     continue
@@ -378,7 +410,7 @@ class ThrusterController:
                 print(e)
 
             # here the sleep time is arbitrary
-            time.sleep(self.step_time_ms)
+            sleep(self.thruster.id, self.step_time_ms)
 
         self.thruster.stop()
         self.stepper.stop()
@@ -396,12 +428,14 @@ class ThrusterController:
 
             spin = 1 if delta_pos > 0 else -1
 
-            incr_angle = self.angle_incr * spin
+            incr_angle = self.angle_incr * spin  # non zero
 
             new.pos = current.pos + spin
 
             if abs(delta_phi) < pi:  # less than half turn
-                # same spin (we do not reverse thrust)
+                cos_delta = cos(delta_phi)
+
+                # same propeller spin (we do not reverse thrust) and going from non-zero to non-zero
                 if current.tau * target.tau > 0:
                     # most frequent condition.
                     #
@@ -412,24 +446,20 @@ class ThrusterController:
                     new.tau = abs(target.tau * current.tau) * sin(delta_phi) / \
                         (current.tau * sin(incr_angle) +
                          target.tau * sin(delta_phi - incr_angle))
-                elif cos(delta_phi) > 0:
+                elif cos_delta > 0:
                     # this is a particular case where we slightly turn the thruster (less than a quarter turn) but
                     # by reversing the thrust in the meantime.
                     # It is also entered to reactivate thrust after it was disabled to perform a half turn.
                     #
-                    # We will apply the target thrust immediately (this may not be relevant since in this case the thruster may
-                    # be the slowest to transition, to be verified) but we apply a coefficient increasing from 0 as the delta decreases.
-                    #
-                    # In practice, the next iteration should immediately enter the above condition so this
-                    # case is not frequent
-                    new.tau = target.tau
-                    new.thrust_coef = cos(delta_phi)
+                    new.tau = new.tau + (target.tau-new.tau) * cos_delta
                 else:
                     # more than a quarter turn to perform while reversing thrust. Turn off thrusters.
                     new.thrust_coef = 0
+                    new.tau = 0
             else:
                 # more than half a turn to perform. We must turn off thrusters.
                 new.thrust_coef = 0
+                new.tau = 0
         else:
             if opposite_delta == 0:
                 new.tau = target.tau  # immediately apply target thrust
@@ -448,3 +478,10 @@ def bound(x):
     if x < -1:
         return -1.0
     return x
+
+
+def sleep(id: str, val: float):
+    if val < 0:
+        print(id, " > negative sleep: ", val)
+        return
+    time.sleep(val)

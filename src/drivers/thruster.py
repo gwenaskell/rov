@@ -3,19 +3,25 @@ from typing import Literal, Union
 import pigpio
 import time
 
-# TODO  sudo pigpio should be executed before importing it
-
-ESC = 4  # Connect the ESC in this GPIO pin
+from src.drivers.mappings import ThrusterLeft, ThrusterRight, ThrusterTail
 
 
 class Thruster:
     def __init__(self, id: Union[Literal["left"], Literal["right"], Literal["tail"]]) -> None:
-        self.max_value = 2000.0
-        self.min_value = 700.0
-        self.zero_value = 1000.0
-        self.pi = pigpio.pi()
+        self.max_value = 2000
+        self.min_value = 700
+        self.zero_value = 1000
+
+        if id == "right":
+            self.driver = ThrusterRight
+        elif id == "left":
+            self.driver = ThrusterLeft
+        else:
+            self.driver = ThrusterTail
+
         self.armed = False
         self.perc = 0
+        self.id = id
 
     def set_pwm(self, perc: int):
         if not self.armed:
@@ -25,20 +31,19 @@ class Thruster:
         self.ratio = perc
         speed = perc * (self.max_value-self.zero_value) + \
             self.zero_value  # TODO handle negatives
-        self.pi.set_servo_pulsewidth(ESC, speed)
+        self.driver.set_pulsewidth(int(speed))
 
     def arm_thruster(self):
-        self.pi.set_servo_pulsewidth(ESC, 0)
+        self.driver.setup()
+        self.driver.set_pulsewidth(0)
         time.sleep(1)
-        self.pi.set_servo_pulsewidth(ESC, self.max_value)
+        self.driver.set_pulsewidth(self.max_value)
         time.sleep(1)
-        self.pi.set_servo_pulsewidth(ESC, self.min_value)
+        self.driver.set_pulsewidth(self.min_value)
         time.sleep(1)
-        self.pi.set_servo_pulsewidth(ESC, self.zero_value)
+        self.driver.set_pulsewidth(self.zero_value)
         self.armed = True
 
-    # This will stop every action your Pi is performing for ESC ofcourse.
     def stop(self):
-        self.pi.set_servo_pulsewidth(ESC, 0)
-        self.pi.stop()
+        self.driver.stop()
         self.armed = False

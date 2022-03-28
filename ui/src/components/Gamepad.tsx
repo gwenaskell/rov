@@ -94,7 +94,7 @@ export default function Controller() {
 
     let state = store.getState();
 
-    WS.send(JSON.stringify(state.gamepad));
+    WS.send(JSON.stringify({tm: Date.now(), ...state.gamepad}));
 
     console.log("button", buttonName, down);
   };

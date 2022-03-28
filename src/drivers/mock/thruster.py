@@ -26,6 +26,5 @@ class Thruster:
         print("thruster armed")
         self.armed = True
 
-    # This will stop every action your Pi is performing for ESC ofcourse.
     def stop(self):
         self.armed = False

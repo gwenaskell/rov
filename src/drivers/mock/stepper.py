@@ -24,7 +24,7 @@ class StepperMotor:
         self.angle_by_step = 2.0*pi / self.nb_steps
 
         # one full rotation will take one second.
-        self.min_step_time = 1.0/200 * \
+        self.min_step_time = 2.0/200 * \
             self.resolutions[resolution]  # to be evaluated
 
         self.spin = True

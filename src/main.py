@@ -1,26 +1,24 @@
 
-from multiprocessing import Process
-
 from .api.api import server, app
 from .components.mainloop import run
+from asyncio import create_task
 
 
 @app.on_event("startup")
 async def startup_event():
-    pipe = server.get_pipe()
+    queue = server.get_queue()
 
-    p = Process(target=run, args=(pipe,))
-    server.set_backend(p)
-    p.start()
+    task = create_task(run(queue))
+
+    server.set_backend(task)
     print("backend started")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     print("server shutting down")
-    server.get_pipe().send(None)
+    server.get_backend().cancel()
 
-    server.get_backend().join(timeout=3)
     print("backend stopped")
 
 

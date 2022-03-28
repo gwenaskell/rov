@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from src.drivers.mappings import Imu
+
 
 @dataclass
 class AccelValue:
@@ -11,10 +13,11 @@ class AccelValue:
     wz: float
 
 
-class Accelerometer:
+class IMU:
     def __init__(self) -> None:
         from mpu6050 import mpu6050
-        self.sensor = mpu6050(0x68)
+        self.driver = Imu
+        self.sensor = mpu6050(self.driver.address)
 
     def get_state(self) -> AccelValue:
         accel = self.sensor.get_accel_data()

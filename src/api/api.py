@@ -1,6 +1,6 @@
 from dataclasses import dataclass
-from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
+from asyncio import Queue, Task
 from typing import Optional
 
 from starlette.websockets import WebSocketState
@@ -57,20 +57,20 @@ class WS:
 
 class _Server:
     def __init__(self):
-        self.pipe, self.downstream = Pipe()
+        self.queue = Queue(maxsize=1)
         self.app = app
-        self.process: Optional[Process] = None
+        self.backend = None
 
-    def get_pipe(self) -> Connection:
-        return self.downstream
+    def get_queue(self) -> Queue:
+        return self.queue
 
-    def set_backend(self, proc: Process):
-        self.process = proc
+    def set_backend(self, task: Task):
+        self.backend = task
 
-    def get_backend(self) -> Process:
-        if self.process is None:
+    def get_backend(self) -> Task:
+        if self.backend is None:
             raise Exception("backend not created")
-        return self.process
+        return self.backend
 
 
 server = _Server()
@@ -109,7 +109,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     buttons=GamePadButtons(**payload["buttons"]),
                     tm=payload["tm"])
 
-                server.pipe.send(controls)
+                await server.queue.put(controls)
             except Exception as e:
                 print("failed to parse "+data, e)
     finally:

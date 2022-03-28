@@ -25,9 +25,7 @@ class Plotter:
 
     def inputs_loop(self, p: Queue):
         try:
-            count = 0
             phi_l = self.phi_l
-            tm = time.time()
             while not self.stop:
                 time.sleep(0.1)
                 
@@ -35,11 +33,10 @@ class Plotter:
                 if self.phi_l != phi_l:
                     tm = round(time.time()*1000)
                     ok = True
-                p.put([self.tau_l, self.phi_l, self.tau_r, self.phi_r, self.tau_t, count])
+                p.put([self.tau_l, self.phi_l, self.tau_r, self.phi_r, self.tau_t])
                 if ok:
-                    print(self.phi_l-phi_l, round(time.time()*1000)-tm)
+                    # print(self.phi_l-phi_l, round(time.time()*1000)-tm)
                     phi_l = self.phi_l
-                count += 1
         finally:
             p.put("stop")
 
@@ -96,7 +93,7 @@ class Plotter:
                 data = p.get()
                 if data == "stop":
                     break
-                tau_l, phi_l, tau_r, phi_r, tau_t, count = data[0], data[1], data[2], data[3], data[4], data[5]
+                tau_l, phi_l, tau_r, phi_r, tau_t = data[0], data[1], data[2], data[3], data[4]
 
                 
                 if ok and tau_l == 100:
