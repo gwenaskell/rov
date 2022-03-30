@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import Tuple
-from ..drivers.accelero import Accelerometer
+from ..drivers.accelero import IMU
 from ..drivers.compass import Compass
 
 
@@ -26,8 +26,8 @@ class RovState:
 
 class IMU:
     def __init__(self) -> None:
-        self.accelero = Accelerometer()
+        self.imu = IMU()
         self.magnetometer = Compass()
 
-    def get_current_state(self) -> RovState:
+    async def get_current_state(self) -> RovState:
         return RovState(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import adafruit_mpu6050
 
 from src.drivers.mappings import Imu
 
@@ -15,18 +16,13 @@ class AccelValue:
 
 class IMU:
     def __init__(self) -> None:
-        from mpu6050 import mpu6050
         self.driver = Imu
-        self.sensor = mpu6050(self.driver.address)
+        self.sensor = adafruit_mpu6050.MPU6050(
+            self.driver.bus, address=self.driver.address)
 
     def get_state(self) -> AccelValue:
-        accel = self.sensor.get_accel_data()
+        accel = self.sensor.acceleration
 
-        assert accel is not None
+        gyro = self.sensor.gyro
 
-        gyro = self.sensor.get_gyro_data()
-        print(gyro['x'])
-        print(gyro['y'])
-        print(gyro['z'])
-
-        return AccelValue(accel['x'], accel['y'], accel['z'], gyro['x'], gyro['y'], gyro['z'])
+        return AccelValue(accel[0], accel[1], accel[2], gyro[0], gyro[1], gyro[2])

@@ -1,23 +1,25 @@
 
 from .api.api import server, app
-from .components.mainloop import run
-from asyncio import create_task
+from .components.backend import Backend
 
 
 @app.on_event("startup")
 async def startup_event():
     queue = server.get_queue()
 
-    task = create_task(run(queue))
+    backend = Backend()
 
-    server.set_backend(task)
+    backend.start(queue)
+
+    server.set_backend(backend)
+
     print("backend started")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     print("server shutting down")
-    server.get_backend().cancel()
+    await server.get_backend().stop()
 
     print("backend stopped")
 

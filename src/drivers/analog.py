@@ -8,10 +8,10 @@ from adafruit_mcp3xxx.analog_in import AnalogIn
 
 
 class AnalogChans(Enum):
-    MIC_LEFT = MCP.P0
-    MIC_RIGHT = MCP.P1
+    VBATT_0 = MCP.P0
+    VBATT_1 = MCP.P1
     EXT_PRESSURE = MCP.P2
-    BATT_CURRENT = MCP.P3
+    CURRENT_MOT = MCP.P3
     SURFACE_UP = MCP.P4
     SURFACE_LOW = MCP.P5
     WATER_AR = MCP.P6

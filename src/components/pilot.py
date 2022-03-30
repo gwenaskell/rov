@@ -1,9 +1,10 @@
+from enum import Enum
 from multiprocessing import Manager, Process
 from dataclasses import dataclass
 import math
 from threading import Thread
 import time
-from typing import Optional, Tuple
+from typing import Optional, Tuple, TypedDict
 import typing
 
 from .utils.countdown import CountDownLatch
@@ -20,7 +21,7 @@ class Commands:
     cx: float  # roll
     cy: float  # pitch
     cz: float  # yaw
-    tm: int
+    tm_ms: int
 
 
 @dataclass
@@ -35,6 +36,19 @@ class ThrusterState:  # state of a front (left/right) thruster
     pos: int  # stepper position
     # usually 1 or 0. Used when thrust of all thrusters must be disabled or reduced during a rotation
     thrust_coef: float
+
+
+class Status(Enum):
+    STOPPED = 0
+    PAUSED = 1
+    RUNNING = 2
+
+
+class TargetsNamespace(TypedDict):
+    left_state: ThrusterState
+    right_state: ThrusterState
+    tail_thrust: float
+    tm: int
 
 
 class Pilot:
@@ -73,7 +87,7 @@ class Pilot:
 
         manager = Manager()
         self.states_proxy = manager.dict({
-            "stopped": False,
+            "status": Status.RUNNING,
             "targets": {
                 "tail_thrust": 0,
                 "left_state": None,
@@ -95,8 +109,11 @@ class Pilot:
             raise RuntimeError("pilot already stopped")
 
         self.stopped = True
-        self.states_proxy["stopped"] = True
+        self.states_proxy["status"] = Status.STOPPED
         self.tracker_process.join()
+
+    def stop_engines(self):
+        self.states_proxy["status"] = Status.PAUSED
 
     def apply_setpoints(self, commands: Commands):
         """computes the target thrusters states corresponding to these commands."""
@@ -149,7 +166,7 @@ class Pilot:
             "tail_thrust": tail_thrust,
             "left_state": left_target_state,
             "right_state": right_target_state,
-            "tm": commands.tm,
+            "tm": commands.tm_ms,
         }
 
     def compute_desired_state(self, vector: ThrusterVector, reverse_spin: bool) -> Tuple[ThrusterState, bool]:
@@ -225,12 +242,12 @@ class SetpointsTracker:
 
         self.tail_thrust = 0.0
 
-        self.min_step_time = self.thruster_left.step_time_ms
+        self.min_step_time = self.thruster_left.step_time
 
     def get_nb_steps(self) -> int:
         return self.thruster_left.stepper.nb_steps
 
-    def run(self, target_states: dict):
+    def run(self, states_proxy: dict):
         """run is started in a subprocess. target_state is a multiprocessing proxy"""
         latch = CountDownLatch(count=3)
 
@@ -243,14 +260,23 @@ class SetpointsTracker:
 
         plotter.start_display()
 
-        self.tail_thruster_loop(target_states)
+        self.tail_thruster_loop(states_proxy)
 
         plotter.stop_display()
 
-    def tail_thruster_loop(self, target_states: dict):
+    def pause(self):
+        self.thruster_left.pause()
+        self.thruster_right.pause()
+        self.thruster_tail.set_pwm(0)
+        self.tail_thrust = 0
+
+    def tail_thruster_loop(self, states_proxy: dict):
         count_to_10 = 0
 
         target_tail_thrust = 0
+
+        paused = False
+
         try:
             while True:
                 tm = time.time()
@@ -260,18 +286,41 @@ class SetpointsTracker:
                 if count_to_10 == 10:
                     count_to_10 = 0
                     # withdraw new target states from proxy
-                    if target_states["stopped"]:
+
+                    status: Status = states_proxy["status"]
+                    if status == Status.STOPPED:
                         print("stopped tracking setpoints")
                         return
+                    if status == Status.PAUSED and not paused:
+                        print("pausing thrusters")
+                        self.pause()
+                        paused = True
+                    else:
+                        targets: TargetsNamespace = states_proxy["targets"]
 
-                    targets = target_states["targets"]
+                        if tm*1000 - targets["tm"] > 2:
+                            if not paused:
+                                print(
+                                    "WARNING: last setpoints update is old. pausing thrusters")
+                                self.pause()
+                                paused = True
+                        else:
+                            if paused:
+                                print("resuming thrusters")
+                                paused = False
+                                self.thruster_left.resume()
+                                self.thruster_right.resume()
 
-                    # if self.thruster_left.target_state != targets["left_state"]:
-                    #     print("delay: ", round(time.time()*1000)-targets["tm"])
+                            # if self.thruster_left.target_state != targets["left_state"]:
+                            #     print("delay: ", round(time.time()*1000)-targets["tm"])
 
-                    target_tail_thrust = targets["tail_thrust"]
-                    self.thruster_left.target_state = targets["left_state"]
-                    self.thruster_right.target_state = targets["right_state"]
+                            target_tail_thrust = targets["tail_thrust"]
+                            self.thruster_left.target_state = targets["left_state"]
+                            self.thruster_right.target_state = targets["right_state"]
+
+                if paused:
+                    sleep("tail", self.min_step_time)
+                    continue
 
                 try:
                     if self.tail_thrust != target_tail_thrust:
@@ -303,12 +352,12 @@ class ThrusterController:
     def __init__(self, thruster: Thruster, stepper: StepperMotor) -> None:
         self.thruster = thruster
         self.stepper = stepper
+        self.status = Status.STOPPED
         self.state = ThrusterState(0.0, 0, 1.0)
         self.target_state = ThrusterState(0.0, 0, 1.0)
 
         self.angle_incr = self.stepper.angle_by_step
-        self.step_time_ms = self.stepper.min_step_time
-        self.stopped = True
+        self.step_time = self.stepper.min_step_time
 
         self.loop_thread = typing.cast(Thread, None)
 
@@ -322,10 +371,10 @@ class ThrusterController:
         return self.target_state.pos - self.state.pos
 
     def launch(self, other: 'ThrusterController', latch: CountDownLatch):
-        if not self.stopped:
+        if self.status != Status.STOPPED:
             print("controller already running")
             return
-        self.stopped = False
+        self.status = Status.RUNNING
 
         self.loop_thread = Thread(target=self.state_tracking_loop,
                                   args=(other, latch))
@@ -333,10 +382,19 @@ class ThrusterController:
         self.loop_thread.start()
 
     def stop(self):
-        self.stopped = True
+        self.status = Status.STOPPED
         if self.loop_thread is not None:
             self.loop_thread.join()
             self.loop_thread = None
+
+    def pause(self):
+        if self.status == Status.RUNNING:
+            self.status = Status.PAUSED
+
+    def resume(self):
+        if self.status == Status.STOPPED:
+            raise RuntimeError("cannot resume a stopped thruster")
+        self.status = Status.RUNNING
 
     def state_tracking_loop(self, other: 'ThrusterController', latch: CountDownLatch):
         self.thruster.arm_thruster()
@@ -347,10 +405,17 @@ class ThrusterController:
 
         It assumes thrust transition is negligible compared to stepper rotation time.
         """
-        while not self.stopped:
-            tm = time.time()
-
+        while self.status != Status.STOPPED:
             try:
+                if self.status == Status.PAUSED:
+                    if self.state.tau != 0:
+                        self.thruster.set_pwm(0)
+                        self.state.tau = 0
+                    sleep(self.thruster.id, self.step_time)
+                    continue
+
+                tm = time.time()
+
                 speed_coef = 1.0
                 spin = 0
 
@@ -390,7 +455,7 @@ class ThrusterController:
 
                 if spin != 0:
                     clockwise = spin > 0
-                    sleep_time = (self.step_time_ms/2) / speed_coef
+                    sleep_time = (self.step_time/2) / speed_coef
 
                     sleep_remaining = sleep_time + tm - time.time()
                     offset = 0.0
@@ -410,7 +475,7 @@ class ThrusterController:
                 print(e)
 
             # here the sleep time is arbitrary
-            sleep(self.thruster.id, self.step_time_ms)
+            sleep(self.thruster.id, self.step_time)
 
         self.thruster.stop()
         self.stepper.stop()

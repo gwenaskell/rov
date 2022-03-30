@@ -9,39 +9,10 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 import json
 
+from src.api.classes import GamePad, GamePadButtons, GamePadSticks
+from src.components.backend import Backend
+
 app = FastAPI()
-
-
-@dataclass
-class GamePadSticks:
-    leftX: int
-    leftY: int
-    rightX: int
-    rightY: int
-    padX: int
-    padY: int
-
-
-@dataclass
-class GamePadButtons:
-    A: bool
-    B: bool
-    X: bool
-    Y: bool
-    L: bool
-    L2: bool
-    R: bool
-    R2: bool
-    stickL: bool
-    stickR: bool
-
-
-@dataclass
-class GamePad:
-    connected: bool
-    sticks: GamePadSticks
-    buttons: GamePadButtons
-    tm: int
 
 
 class WS:
@@ -64,12 +35,12 @@ class _Server:
     def get_queue(self) -> Queue:
         return self.queue
 
-    def set_backend(self, task: Task):
-        self.backend = task
+    def set_backend(self, backend: Backend):
+        self.backend = backend
 
-    def get_backend(self) -> Task:
+    def get_backend(self) -> Backend:
         if self.backend is None:
-            raise Exception("backend not created")
+            raise RuntimeError("backend not created")
         return self.backend
 
 
@@ -93,6 +64,7 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             try:
+
                 data = await websocket.receive_text()
             except WebSocketDisconnect:
                 return
@@ -107,7 +79,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     connected=payload["connected"],
                     sticks=GamePadSticks(**payload["sticks"]),
                     buttons=GamePadButtons(**payload["buttons"]),
-                    tm=payload["tm"])
+                    tm_ms=payload["tm_ms"])
 
                 await server.queue.put(controls)
             except Exception as e:

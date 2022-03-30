@@ -1,4 +1,3 @@
-import drivers.patch
 from enum import Enum
 from optparse import Option
 from types import MappingProxyType
@@ -7,7 +6,7 @@ import adafruit_blinka.board.raspberrypi.raspi_40pin as bcm
 from adafruit_blinka.microcontroller.bcm283x.pin import Pin as BcmPin
 import RPi.GPIO
 import busio
-
+import board
 from pulseio import PWMOut
 
 # Docs:
@@ -201,6 +200,8 @@ class I2CDriver:
 
         self.sda: Final[PinDriver] = PinDriver(bound=bcm.SDA)
         self.scl: Final[PinDriver] = PinDriver(bound=bcm.SCL)
+
+        self.bus = busio.I2C(scl=bcm.SCL, sda=bcm.SDA)
 
 
 class SPIDriver:
