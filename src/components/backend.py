@@ -16,7 +16,8 @@ from tkinter import mainloop
 from typing import Optional
 from .imu import IMU
 from .pid import PID
-from .pilot import Commands, Pilot
+from .classes import Commands
+from .pilot import Pilot
 from asyncio import Queue, Task, create_task, wait_for
 
 

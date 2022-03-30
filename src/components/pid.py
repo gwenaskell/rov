@@ -1,5 +1,5 @@
 from .imu import RovState
-from .pilot import Commands
+from .classes import Commands
 
 
 class PID:
