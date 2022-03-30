@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Tuple
 from ..drivers.accelero import IMU
 from ..drivers.compass import Compass
 

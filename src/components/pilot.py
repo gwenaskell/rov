@@ -32,16 +32,16 @@ class Pilot:
         # angle threshold to switch to reverse thrust
         self.reverse_threshold = 50.0/180*pi + pi/2
 
-        self.stopped = True
+        self.status: Status = Status.STOPPED
 
         self.tracker_process = typing.cast(Process, None)
 
         self.states_proxy = typing.cast(dict, None)
 
     def start(self):
-        if not self.stopped:
+        if self.status == Status.RUNNING:
             raise RuntimeError("pilot already running")
-        self.stopped = False
+        self.status = Status.RUNNING
 
         manager = Manager()
         self.states_proxy = manager.dict({
@@ -50,7 +50,6 @@ class Pilot:
                 "tail_thrust": 0,
                 "left_state": None,
                 "right_state": None,
-                "tm": round(time.time()*1000),
             }
         })
         self.apply_setpoints(Commands(0.0, 0.0, 0.0, 0.0, 0.0, 0))
@@ -63,14 +62,14 @@ class Pilot:
         return round(angle*self.nb_stepper_steps/(2*pi))
 
     def stop(self):
-        if self.stopped:
+        if self.status:
             raise RuntimeError("pilot already stopped")
 
-        self.stopped = True
+        self.status = Status.STOPPED
         self.states_proxy["status"] = Status.STOPPED
         self.tracker_process.join()
 
-    def stop_engines(self):
+    def pause(self):
         self.states_proxy["status"] = Status.PAUSED
 
     def apply_setpoints(self, commands: Commands):
@@ -124,8 +123,11 @@ class Pilot:
             "tail_thrust": tail_thrust,
             "left_state": left_target_state,
             "right_state": right_target_state,
-            "tm": commands.tm_ms,
         }
+
+        if self.status != Status.RUNNING:
+            self.status = Status.RUNNING
+            self.states_proxy["status"] = Status.RUNNING
 
     def compute_desired_state(self, vector: ThrusterVector, reverse_spin: bool) -> Tuple[ThrusterState, bool]:
         """mathematical conversion of the thrust vector into angle and thrust"""

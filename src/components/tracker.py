@@ -77,25 +77,18 @@ class SetpointsTracker:
                     else:
                         targets: TargetsNamespace = states_proxy["targets"]
 
-                        if tm*1000 - targets["tm"] > 2:
-                            if not paused:
-                                print(
-                                    "WARNING: last setpoints update is old. pausing thrusters")
-                                self.pause()
-                                paused = True
-                        else:
-                            if paused:
-                                print("resuming thrusters")
-                                paused = False
-                                self.thruster_left.resume()
-                                self.thruster_right.resume()
+                        if paused:
+                            print("resuming thrusters")
+                            paused = False
+                            self.thruster_left.resume()
+                            self.thruster_right.resume()
 
-                            # if self.thruster_left.target_state != targets["left_state"]:
-                            #     print("delay: ", round(time.time()*1000)-targets["tm"])
+                        # if self.thruster_left.target_state != targets["left_state"]:
+                        #     print("delay: ", round(time.time()*1000)-targets["tm"])
 
-                            target_tail_thrust = targets["tail_thrust"]
-                            self.thruster_left.target_state = targets["left_state"]
-                            self.thruster_right.target_state = targets["right_state"]
+                        target_tail_thrust = targets["tail_thrust"]
+                        self.thruster_left.target_state = targets["left_state"]
+                        self.thruster_right.target_state = targets["right_state"]
 
                 if paused:
                     sleep("tail", self.min_step_time)

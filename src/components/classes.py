@@ -37,4 +37,3 @@ class TargetsNamespace(TypedDict):
     left_state: ThrusterState
     right_state: ThrusterState
     tail_thrust: float
-    tm: int

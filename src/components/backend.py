@@ -1,6 +1,6 @@
 import asyncio
-from optparse import Option
 import os
+from time import time
 
 from src.api.classes import GamePad
 
@@ -10,8 +10,6 @@ if not os.getenv("ONBOARD"):
 
 from calendar import c
 from dataclasses import dataclass
-from multiprocessing import Process
-from multiprocessing.connection import Connection
 from tkinter import mainloop
 from typing import Optional
 from .imu import IMU
@@ -56,6 +54,8 @@ class Backend:
     async def _run(self, inputs_queue: Queue):
         self.pilot.start()
         inputs: Optional[GamePad] = None
+
+        paused = False
         while True:
             try:
                 # read imu data while we wait for next iteration
@@ -69,11 +69,19 @@ class Backend:
                 imu_data = await imu_t
 
                 if self.exiting:
-                    self.pilot.stop_engines()
+                    self.pilot.stop()
                     return
 
                 if not inputs:
-                    self.pilot.stop_engines()
+                    # only at first
+                    continue
+
+                if time()*1000 - inputs.tm_ms > 2000:
+                    if not paused:
+                        print(
+                            "too much time elapsed since last input. pausing thrusters")
+                        self.pilot.pause()
+                        paused = True
                     continue
 
                 # commands = self.pid.get_correction(0, state, controls)
