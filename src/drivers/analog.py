@@ -18,7 +18,7 @@ class AnalogChans(Enum):
     WATER_AV = MCP.P7
 
 
-class AnalogInput:
+class AnalogReader:
     def __init__(self) -> None:
         self.driver = A2C
 

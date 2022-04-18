@@ -11,5 +11,7 @@ class PID:
         self.Ki = Ki
         self.Kd = Kd
 
-    def get_correction(self, delta_s: float, state: RovState, inputs) -> Commands:
-        return Commands(0, 0, 0, 0, 0, 0)
+        self.last_tm = 0
+
+    def get_correction(self, state: RovState, commands: Commands) -> Commands:
+        return commands

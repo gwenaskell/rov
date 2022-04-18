@@ -3,7 +3,7 @@ from typing import Literal, Union
 import pigpio
 import time
 
-from src.drivers.mappings import ThrusterLeft, ThrusterRight, ThrusterTail
+from src.drivers.mappings import SwitchLeft, SwitchRight, SwitchTail, ThrusterLeft, ThrusterRight, ThrusterTail
 
 
 class Thruster:
@@ -14,10 +14,13 @@ class Thruster:
 
         if id == "right":
             self.driver = ThrusterRight
+            self.switch = SwitchRight
         elif id == "left":
             self.driver = ThrusterLeft
+            self.switch = SwitchLeft
         else:
             self.driver = ThrusterTail
+            self.switch = SwitchTail
 
         self.armed = False
         self.perc = 0
@@ -34,6 +37,8 @@ class Thruster:
         self.driver.set_pulsewidth(int(speed))
 
     def arm_thruster(self):
+        self.switch.setup()
+        self.switch.write(True)
         self.driver.setup()
         self.driver.set_pulsewidth(0)
         time.sleep(1)
@@ -46,4 +51,5 @@ class Thruster:
 
     def stop(self):
         self.driver.stop()
+        self.switch.write(False)
         self.armed = False

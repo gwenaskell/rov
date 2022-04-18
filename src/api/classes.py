@@ -3,53 +3,37 @@ from dataclasses import dataclass
 
 @dataclass
 class GamePadSticks:
-    leftX: int
-    leftY: int
-    rightX: int
-    rightY: int
-    padX: int
-    padY: int
+    leftX: int = 0
+    leftY: int = 0
+    rightX: int = 0
+    rightY: int = 0
+    padX: int = 0
+    padY: int = 0
 
 
 @dataclass
 class GamePadButtons:
-    A: bool
-    B: bool
-    X: bool
-    Y: bool
-    L: bool
-    L2: bool
-    R: bool
-    R2: bool
-    stickL: bool
-    stickR: bool
+    A: bool = False
+    B: bool = False
+    X: bool = False
+    Y: bool = False
+    L: bool = False
+    L2: bool = False
+    R: bool = False
+    R2: bool = False
+    stickL: bool = False
+    stickR: bool = False
 
 
 @dataclass
 class GamePad:
     connected: bool
-    sticks: GamePadSticks
-    buttons: GamePadButtons
-    tm_ms: int
+    sticks: GamePadSticks = GamePadSticks()
+    buttons: GamePadButtons = GamePadButtons()
+    tm_ms: int = 0
 
 
 class MotorState:
     on: float
     angle: float
     thrust: float
-
-
-class Feedbacks:
-    surfaced: bool
-    battery_charge: float
-    ext_pressure: float
-    left_mot: MotorState
-    right_mot: MotorState
-    tail_mot: MotorState
-    flood_ar: bool
-    flood_av: bool
-    pressure_in: float
-    current_mot: float
-    current_electronics: float
-    temp_in: bool
-    bridled_mode: bool  # P mot plafonnée

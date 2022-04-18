@@ -1,6 +1,10 @@
+import typing
+from pydantic import BaseModel
+import asyncio
 from dataclasses import dataclass
+import dataclasses
 from multiprocessing.connection import Connection
-from asyncio import Queue, Task
+from asyncio import Queue, Task, create_task
 from typing import Optional
 
 from starlette.websockets import WebSocketState
@@ -11,6 +15,7 @@ import json
 
 from src.api.classes import GamePad, GamePadButtons, GamePadSticks
 from src.components.backend import Backend
+from src.components.classes import Status
 
 app = FastAPI()
 
@@ -30,7 +35,7 @@ class _Server:
     def __init__(self):
         self.queue = Queue(maxsize=1)
         self.app = app
-        self.backend = None
+        self.backend: Backend = typing.cast(Backend, None)
 
     def get_queue(self) -> Queue:
         return self.queue
@@ -52,6 +57,20 @@ def read_root():
     return {"Hello": "World"}
 
 
+class EnginesState(BaseModel):
+    on: bool
+    paused: bool
+
+
+@app.put("/engines")
+def set_engines_state(state: EnginesState):
+    if state.on:
+        server.backend.switch_engines(
+            Status.PAUSED if state.paused else Status.RUNNING)
+    else:
+        server.backend.switch_engines(Status.STOPPED)
+
+
 @app.websocket("/socket")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -61,10 +80,17 @@ async def websocket_endpoint(websocket: WebSocket):
         await WS.socket.close()
 
     WS.socket = websocket
+
+    feedbacks_t = create_task(submit_feedbacks(websocket))
+
+    controls = GamePad(
+        connected=False,
+        sticks=GamePadSticks(),
+        buttons=GamePadButtons(),
+        tm_ms=0)
     try:
         while True:
             try:
-
                 data = await websocket.receive_text()
             except WebSocketDisconnect:
                 return
@@ -75,11 +101,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 if not payload:
                     continue
 
-                controls = GamePad(
-                    connected=payload["connected"],
-                    sticks=GamePadSticks(**payload["sticks"]),
-                    buttons=GamePadButtons(**payload["buttons"]),
-                    tm_ms=payload["tm_ms"])
+                controls.tm_ms = payload["tm_ms"]
+                controls.connected = True
+                if "sticks" in payload:
+                    controls.sticks = GamePadSticks(**payload["sticks"])
+                if "buttons" in payload:
+                    controls.buttons = GamePadButtons(**payload["buttons"])
 
                 await server.queue.put(controls)
             except Exception as e:
@@ -87,3 +114,13 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         print("closing socket")
         WS.socket = None
+        await feedbacks_t
+
+
+async def submit_feedbacks(websocket: WebSocket):
+    while True:
+        await asyncio.sleep(0.3)
+        try:
+            await websocket.send_json(dataclasses.asdict(server.backend.feedbacks))
+        except WebSocketDisconnect:
+            return

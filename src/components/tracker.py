@@ -2,11 +2,11 @@ from threading import Thread
 import time
 import typing
 
-from src.components.classes import Status, TargetsNamespace, ThrusterState
+from src.components.classes import NamespaceProxy, Status, TargetsProxy, ThrusterState
 
 from .utils.countdown import CountDownLatch
-from ..drivers.thruster import Thruster
-from ..drivers.stepper import StepperMotor
+from .accessors import Thruster
+from .accessors import StepperMotor
 from math import sin, cos, pi
 from src.drivers.mock.plot import plotter
 
@@ -26,8 +26,8 @@ class SetpointsTracker:
     def get_nb_steps(self) -> int:
         return self.thruster_left.stepper.nb_steps
 
-    def run(self, states_proxy: dict):
-        """run is started in a subprocess. target_state is a multiprocessing proxy"""
+    def run(self, states_proxy: NamespaceProxy):
+        """run is started in a subprocess"""
         latch = CountDownLatch(count=3)
 
         self.thruster_left.launch(self.thruster_right, latch)
@@ -43,13 +43,13 @@ class SetpointsTracker:
 
         plotter.stop_display()
 
-    def pause(self):
+    def _pause(self):
         self.thruster_left.pause()
         self.thruster_right.pause()
         self.thruster_tail.set_pwm(0)
         self.tail_thrust = 0
 
-    def tail_thruster_loop(self, states_proxy: dict):
+    def tail_thruster_loop(self, states_proxy: NamespaceProxy):
         count_to_10 = 0
 
         target_tail_thrust = 0
@@ -72,10 +72,10 @@ class SetpointsTracker:
                         return
                     if status == Status.PAUSED and not paused:
                         print("pausing thrusters")
-                        self.pause()
+                        self._pause()
                         paused = True
                     else:
-                        targets: TargetsNamespace = states_proxy["targets"]
+                        targets: TargetsProxy = states_proxy["targets"]
 
                         if paused:
                             print("resuming thrusters")
@@ -125,8 +125,8 @@ class ThrusterController:
         self.thruster = thruster
         self.stepper = stepper
         self.status = Status.STOPPED
-        self.state = ThrusterState(0.0, 0, 1.0)
-        self.target_state = ThrusterState(0.0, 0, 1.0)
+        self.state = ThrusterState(0.0, 0)
+        self.target_state = ThrusterState(0.0, 0)
 
         self.angle_incr = self.stepper.angle_by_step
         self.step_time = self.stepper.min_step_time

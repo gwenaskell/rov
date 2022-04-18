@@ -1,6 +1,6 @@
 from dataclasses import dataclass
-from ..drivers.accelero import IMU
-from ..drivers.compass import Compass
+from .accessors import IMU
+from .accessors import Compass
 
 
 @dataclass

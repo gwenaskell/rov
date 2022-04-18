@@ -94,7 +94,7 @@ export default function Controller() {
 
     let state = store.getState();
 
-    WS.send(JSON.stringify({tm: Date.now(), ...state.gamepad}));
+    WS.send(JSON.stringify({tm: Date.now(), buttons: state.gamepad.buttons}));
 
     console.log("button", buttonName, down);
   };
@@ -102,7 +102,7 @@ export default function Controller() {
   const axisChangeHandler = (
     axisName: string,
     value: number,
-    previousValue: number
+    _previousValue: number
   ) => {
     let axis = mapAxisName(axisName);
     if (axis === '') {
@@ -120,7 +120,7 @@ export default function Controller() {
 
     let state = store.getState();
 
-    WS.send(JSON.stringify({tm_ms: Date.now(), ...state.gamepad}));
+    WS.send(JSON.stringify({tm_ms: Date.now(), sticks: state.gamepad.sticks}));
 
     console.log("axis", axisName, value);
   };

@@ -1,12 +1,10 @@
-from src.components.pilot import Commands
-from src.drivers.pressure import PressureSensor
-from src.drivers.thermo import Thermometer
+from src.components.classes import Measurements
 
 
 class Safety:
-    def __init__(self) -> None:
-        self.pressure = PressureSensor()
-        self.thermometer = Thermometer()
+    VBATT_THRESHOLD = 19
+    IMOT_THRESHOLD = 30
 
-    def rectify(self, commands: Commands) -> Commands:
-        return commands
+    @classmethod
+    def must_bridle(cls, ms: Measurements) -> bool:
+        return ms.v_batt < cls.VBATT_THRESHOLD or ms.i_mots > cls.IMOT_THRESHOLD

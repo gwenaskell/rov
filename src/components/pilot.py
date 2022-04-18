@@ -2,7 +2,7 @@ from multiprocessing import Manager, Process
 import time
 from typing import Tuple
 import typing
-from src.components.classes import Commands, Status, ThrusterState, ThrusterVector
+from src.components.classes import Commands, NamespaceProxy, Status, TargetsProxy, ThrusterState, ThrusterVector
 
 from src.components.tracker import SetpointsTracker
 
@@ -36,7 +36,7 @@ class Pilot:
 
         self.tracker_process = typing.cast(Process, None)
 
-        self.states_proxy = typing.cast(dict, None)
+        self.states_proxy: NamespaceProxy = typing.cast(NamespaceProxy, None)
 
     def start(self):
         if self.status == Status.RUNNING:
@@ -44,36 +44,56 @@ class Pilot:
         self.status = Status.RUNNING
 
         manager = Manager()
-        self.states_proxy = manager.dict({
+        self.states_proxy = typing.cast(NamespaceProxy, manager.dict({
             "status": Status.RUNNING,
             "targets": {
                 "tail_thrust": 0,
                 "left_state": None,
                 "right_state": None,
             }
-        })
+        }))
         self.apply_setpoints(Commands(0.0, 0.0, 0.0, 0.0, 0.0, 0))
 
-        self.tracker_process = Process(
-            target=self.tracker.run, args=(self.states_proxy,))
-        self.tracker_process.start()
+        self._start_tracker_process()
 
     def angle_to_step_index(self, angle: float) -> int:
         return round(angle*self.nb_stepper_steps/(2*pi))
 
-    def stop(self):
-        if self.status:
-            raise RuntimeError("pilot already stopped")
+    def _start_tracker_process(self):
+        self.tracker_process = Process(
+            target=self.tracker.run, args=(self.states_proxy,))
+        self.tracker_process.start()
 
+    def switch_engines(self, status: Status):
+        if status == self.status:
+            print("warning: no change implied by engines status switch")
+            return
+
+        must_relaunch = False
+
+        if self.status == Status.STOPPED:
+            must_relaunch = True
+            if self.tracker_process.is_alive():
+                self.tracker_process.join()
+
+        self.status = status
+        self.states_proxy["status"] = status
+
+        if must_relaunch:
+            print("relaunching tracker")
+            self._start_tracker_process()
+
+    def stop(self):
         self.status = Status.STOPPED
         self.states_proxy["status"] = Status.STOPPED
-        self.tracker_process.join()
+        if self.tracker_process.is_alive():
+            self.tracker_process.join()
 
-    def pause(self):
-        self.states_proxy["status"] = Status.PAUSED
+    def apply_setpoints(self, commands: Commands, bridle=False):
+        """computes the target thrusters states corresponding to these commands.
 
-    def apply_setpoints(self, commands: Commands):
-        """computes the target thrusters states corresponding to these commands."""
+        If the engines were stopped, they are resumed to running state
+        """
         # TODO: apply proper coefs on cy depending on rov geometry and center of gravity
         # TODO: project self.eps on earth vertical axis
 
@@ -86,7 +106,7 @@ class Pilot:
 
         tail_thrust = commands.fz + commands.cy - self.eps
 
-        left_norm = (left_thrust.f_x**2+left_thrust.f_z**2)**0.5
+        left_norm: float = (left_thrust.f_x**2+left_thrust.f_z**2)**0.5
 
         if left_norm > 1:
             left_thrust.f_x /= left_norm
@@ -95,7 +115,8 @@ class Pilot:
             right_thrust.f_z /= left_norm
             tail_thrust /= left_norm
 
-        right_norm = (right_thrust.f_x**2+right_thrust.f_z**2)**0.5
+        right_norm: float = (right_thrust.f_x**2+right_thrust.f_z**2)**0.5
+
         if right_norm > 1:
             left_thrust.f_x /= right_norm
             left_thrust.f_z /= right_norm
@@ -104,6 +125,7 @@ class Pilot:
             tail_thrust /= right_norm
 
         tail_norm = abs(tail_thrust)
+
         if tail_norm > 1:
             left_thrust.f_x /= tail_norm
             left_thrust.f_z /= tail_norm
@@ -115,6 +137,11 @@ class Pilot:
             left_thrust, self.left_reversed)
         right_target_state, self.right_reversed = self.compute_desired_state(
             right_thrust, self.right_reversed)
+
+        if bridle:
+            left_target_state.tau *= 0.8
+            right_target_state.tau *= 0.8
+            tail_thrust *= 0.8
 
         # print(left_target_state.pos, left_target_state.tau,
         #       right_target_state.pos, right_target_state.tau)

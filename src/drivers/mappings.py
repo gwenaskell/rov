@@ -22,11 +22,11 @@ StepperLeft = _Stepper()
 StepperRight = _Stepper()
 
 
-Switch1 = PinOutput()
+SwitchLeft = PinOutput()
 
-Switch2 = PinOutput()
+SwitchRight = PinOutput()
 
-Switch3 = PinOutput()
+SwitchTail = PinOutput()
 
 Lights = PWMDriver()
 
@@ -69,9 +69,9 @@ MAPPINGS: MappingProxyType[int, Union[None, PinDriver, Tuple[PinDriver, ...]]] =
     29: StepperLeft.direction,    30: None,
     31: StepperLeft.step,         32: _Unused_,
     33: StepperRight.direction,   34: None,
-    35: StepperRight.step,        36: Switch1,
-    37: _Unused_,                 38: Switch2,
-    39: None,                     40: Switch3,
+    35: StepperRight.step,        36: SwitchLeft,
+    37: _Unused_,                 38: SwitchRight,
+    39: None,                     40: SwitchTail,
 })
 
 
