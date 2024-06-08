@@ -13,7 +13,7 @@ class Pilot:
     """Pilot handles conversion of the input commands expressed in terms of thrust and moment on (x, y, z)
     into instructions for the motors.
 
-    The thrusters are updated progressively in a separate process using the SetpointsTracker, by periodically 
+    The thrusters are updated progressively in a separate process using the SetpointsTracker, by periodicaly 
     checking the desired state and incrementally moving the thrusters towards this state.
     """
 
@@ -38,23 +38,16 @@ class Pilot:
 
         self.states_proxy: NamespaceProxy = typing.cast(NamespaceProxy, None)
 
-    def start(self):
-        if self.status == Status.RUNNING:
-            raise RuntimeError("pilot already running")
-        self.status = Status.RUNNING
-
+    def init(self):
         manager = Manager()
         self.states_proxy = typing.cast(NamespaceProxy, manager.dict({
-            "status": Status.RUNNING,
+            "status": Status.STOPPED,
             "targets": {
                 "tail_thrust": 0,
                 "left_state": None,
                 "right_state": None,
             }
         }))
-        self.apply_setpoints(Commands(0.0, 0.0, 0.0, 0.0, 0.0, 0))
-
-        self._start_tracker_process()
 
     def angle_to_step_index(self, angle: float) -> int:
         return round(angle*self.nb_stepper_steps/(2*pi))
@@ -80,7 +73,7 @@ class Pilot:
         self.states_proxy["status"] = status
 
         if must_relaunch:
-            print("relaunching tracker")
+            print("launching tracker")
             self._start_tracker_process()
 
     def stop(self):
@@ -94,6 +87,10 @@ class Pilot:
 
         If the engines were stopped, they are resumed to running state
         """
+
+        if self.status == Status.STOPPED:
+            raise RuntimeError("cannot apply setpoints: thrusters are stopped")
+
         # TODO: apply proper coefs on cy depending on rov geometry and center of gravity
         # TODO: project self.eps on earth vertical axis
 

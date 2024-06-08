@@ -6,10 +6,6 @@ from src.api.classes import GamePad
 from src.components.safety import Safety
 from src.components.sensors import Sensors
 
-if not os.getenv("ONBOARD"):
-    from ..drivers.mock import mock
-    mock()
-
 from dataclasses import dataclass
 from typing import Optional
 from .imu import IMU, RovState
@@ -60,20 +56,20 @@ class Backend:
         self.pilot.switch_engines(status)
 
     async def _run(self, inputs_queue: Queue):
-        self.pilot.start()
+        self.pilot.init()
         inputs: GamePad = GamePad(connected=False)
 
         self.feedbacks.measurements = await self.sensors.read_sensors()
+        
+        create_task(self.imu.run())
         last_sensors_read = time()
         while True:
             if self.exiting:
+                self.imu.stop()
                 self.pilot.stop()
                 return
 
             try:
-                # read imu data while we wait for next iteration
-                imu_t = create_task(self.imu.get_current_state())
-
                 sensors_t = None
                 tm = time()
                 if tm - last_sensors_read > 0.5:  # two times per second
@@ -88,7 +84,7 @@ class Backend:
 
                 tick = time()
 
-                imu_data = await imu_t
+                imu_data = self.imu.get_current_state()
 
                 if sensors_t is not None:
                     self.feedbacks.measurements = await sensors_t

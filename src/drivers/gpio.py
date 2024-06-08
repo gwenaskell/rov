@@ -16,16 +16,16 @@ from pulseio import PWMOut
 
 
 class PinType(Enum):
-    GPIO = 0
-    GND = 1
-    POW = 2
+    GPIO = 1
+    GND = 2
+    POW = 3
 
 
 class Pin:
     def __init__(self, pin: int, bcm_pin: BcmPin, typ: PinType = PinType.GPIO, bcm_role: Optional[BcmPin] = None) -> None:
         self.typ = typ
         # bcm pin number
-        self.id: int = cast(int, self.bcm_pin.id)
+        self.id: int = cast(int, bcm_pin.id)
         # physical pin number
         self.physical_pin = pin
         # bcm pin object
@@ -99,7 +99,7 @@ def validate():
         if array[i-1] is not None:
             raise RuntimeError("pin number attributed twice:", i)
         pin = PINS[i]
-        if pin.typ == "gpio":
+        if pin.typ == PinType.GPIO:
             pin.physical_pin = i
 
             assert isinstance(pin.bcm_pin.id, int)
@@ -177,7 +177,7 @@ class PWMDriver(PinDriver):
     def setup(self):
         if self.pin is undefined_pin:
             raise RuntimeError("pin driver not allocated")
-        self.pwm = PWMOut(self.pin.id)
+        self.pwm = PWMOut(self.pin.bcm_pin)
         self.ready = True
 
     def stop(self):
@@ -189,23 +189,25 @@ class PWMDriver(PinDriver):
 
 
 class I2CDriver:
-    addresses: List[int] = []
+    _addresses: List[int] = []
+    _bus = busio.I2C(scl=bcm.SCL, sda=bcm.SDA)
 
     def __init__(self, address: int) -> None:
-        if address in I2CDriver.addresses:
+        if address in I2CDriver._addresses:
             raise RuntimeError("error: I2C address %s used twice" % address)
-        I2CDriver.addresses.append(address)
+        I2CDriver._addresses.append(address)
 
         self.address = address
 
         self.sda: Final[PinDriver] = PinDriver(bound=bcm.SDA)
         self.scl: Final[PinDriver] = PinDriver(bound=bcm.SCL)
 
-        self.bus = busio.I2C(scl=bcm.SCL, sda=bcm.SDA)
+        self.bus = I2CDriver._bus
 
 
 class SPIDriver:
     _used_selectors = []
+    _bus = busio.SPI(clock=bcm.SCK, MISO=bcm.MISO, MOSI=bcm.MOSI)
 
     def __init__(self) -> None:
         self.mosi: Final[PinDriver] = PinDriver(bound=bcm.MOSI)
@@ -214,7 +216,7 @@ class SPIDriver:
 
         self.ce: Final[PinDriver] = PinDriver()
 
-        self.bus = busio.SPI(clock=bcm.SCK, MISO=bcm.MISO, MOSI=bcm.MOSI)
+        self.bus = SPIDriver._bus
 
 
 class UARTDriver:

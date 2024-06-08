@@ -16,7 +16,7 @@ class ControlCommand:
         self.forward_threshold = 40/180*pi + pi/2
         self.reverse_threshold = 50/180*pi + pi/2
         self.tau_l, self.phi_l, self.tau_r, self.phi_r = self._get_commands(0, 0, 0, 0)
-    
+
     def update(self, c_x, c_delta, c_z, c_theta):
         self.tau_l, self.phi_l, self.tau_r, self.phi_r = self._get_commands(c_x, c_delta, c_z, c_theta)
 

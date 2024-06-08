@@ -6,7 +6,6 @@ try:
     import RPi.GPIO as GPIO
 except:
     pass
-import time
 
 # https://github.com/gavinlyonsrepo/RpiMotorLib/blob/master/Documentation/Nema11A4988.md
 

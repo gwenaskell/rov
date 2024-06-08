@@ -1,4 +1,11 @@
-from ..compass import CompassValue
+from dataclasses import dataclass
+
+
+@dataclass
+class CompassValue:
+    bx: float
+    by: float
+    bz: float
 
 
 class Compass:

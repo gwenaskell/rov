@@ -58,6 +58,7 @@ class Measurements:
 
 
 class Feedbacks:
+    """feedbacks to the user"""
     measurements: Measurements = Measurements()
 
     iter_ms: int = 0
@@ -65,3 +66,22 @@ class Feedbacks:
     bridled: bool = False
 
     status: Status = Status.STOPPED
+
+@dataclass
+class RovState:
+    # speed
+    # vx: float
+    # vy: float
+    # vz: float
+    # acceleration
+    ax: float
+    ay: float
+    az: float
+    # angle
+    thx: float
+    thy: float
+    thz: float
+    # angular speed
+    wx: float
+    wy: float
+    wz: float

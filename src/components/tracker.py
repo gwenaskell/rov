@@ -8,7 +8,7 @@ from .utils.countdown import CountDownLatch
 from .accessors import Thruster
 from .accessors import StepperMotor
 from math import sin, cos, pi
-from src.drivers.mock.plot import plotter
+from .accessors import Display
 
 
 class SetpointsTracker:
@@ -37,11 +37,8 @@ class SetpointsTracker:
         latch.count_down()
         latch.wait()
 
-        plotter.start_display()
-
-        self.tail_thruster_loop(states_proxy)
-
-        plotter.stop_display()
+        with Display():
+            self.tail_thruster_loop(states_proxy)
 
     def _pause(self):
         self.thruster_left.pause()
@@ -175,7 +172,7 @@ class ThrusterController:
         latch.wait()
         """This function ensures a smooth transition from the current thruster state to the target state.
 
-        It assumes thrust transition is negligible compared to stepper rotation time.
+        It assumes thrust speed transition is negligible compared to stepper rotation time.
         """
         while self.status != Status.STOPPED:
             try:
@@ -210,7 +207,7 @@ class ThrusterController:
                 if spin != 0 and abs(opposite_delta) > abs(delta):
                     speed_coef = abs(delta) / abs(opposite_delta)
                     # avoid sleeping too long if we have a very small move to make while the opposite
-                    # thruster as a long rotation to perform.
+                    # thruster has a long rotation to perform.
                     #
                     # We will reach the target position sooner but it ensures we loop frequently enough
                     # to catch new updates of target state

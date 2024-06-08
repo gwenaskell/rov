@@ -33,9 +33,9 @@ Lights = PWMDriver()
 
 Imu = I2CDriver(0x68)
 
-Compass = I2CDriver(0x0)
+Compass = I2CDriver(0x1E)
 
-PressureIn = I2CDriver(0x0)
+PressureIn = I2CDriver(0x77)
 
 
 GPS = UARTDriver()

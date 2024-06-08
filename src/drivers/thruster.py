@@ -1,6 +1,5 @@
 import os
 from typing import Literal, Union
-import pigpio
 import time
 
 from src.drivers.mappings import SwitchLeft, SwitchRight, SwitchTail, ThrusterLeft, ThrusterRight, ThrusterTail
