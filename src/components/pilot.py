@@ -3,8 +3,11 @@ import time
 from typing import Tuple
 import typing
 from src.components.classes import Commands, NamespaceProxy, Status, TargetsProxy, ThrusterState, ThrusterVector
+from src.components.classes import RovState
 
 from src.components.tracker import SetpointsTracker
+
+from src.components.geometry import get_earth_axis_coordinates
 
 from math import sin, cos, atan, pi
 
@@ -13,7 +16,7 @@ class Pilot:
     """Pilot handles conversion of the input commands expressed in terms of thrust and moment on (x, y, z)
     into instructions for the motors.
 
-    The thrusters are updated progressively in a separate process using the SetpointsTracker, by periodicaly 
+    The thrusters are updated progressively in a separate process using the SetpointsTracker, by periodically 
     checking the desired state and incrementally moving the thrusters towards this state.
     """
 
@@ -24,8 +27,8 @@ class Pilot:
 
         self.nb_stepper_steps = self.tracker.get_nb_steps()
 
-        self.eps = 0.15  # minimum vertical thrust to maintain the ROV underwater
-        self.reverse_efficiency = 0.9
+        self.eps = 0.2  # minimum vertical thrust to maintain the ROV underwater
+        self.reverse_efficiency = 0.9 # efficiency of propellers when rotated backward
 
         # angle threshold to switch to forward thrust
         self.forward_threshold = 40.0/180*pi + pi/2
@@ -36,6 +39,7 @@ class Pilot:
 
         self.tracker_process = typing.cast(Process, None)
 
+        # data channel between this process and the tracker
         self.states_proxy: NamespaceProxy = typing.cast(NamespaceProxy, None)
 
     def init(self):
@@ -82,7 +86,7 @@ class Pilot:
         if self.tracker_process.is_alive():
             self.tracker_process.join()
 
-    def apply_setpoints(self, commands: Commands, bridle=False):
+    def apply_setpoints(self, commands: Commands, state: RovState, bridle=False):
         """computes the target thrusters states corresponding to these commands.
 
         If the engines were stopped, they are resumed to running state
@@ -92,16 +96,17 @@ class Pilot:
             raise RuntimeError("cannot apply setpoints: thrusters are stopped")
 
         # TODO: apply proper coefs on cy depending on rov geometry and center of gravity
-        # TODO: project self.eps on earth vertical axis
+        
+        z_axis = get_earth_axis_coordinates(state.q)
 
         left_thrust = ThrusterVector(
-            commands.fx - commands.cz,
-            commands.fz + commands.cx - commands.cy/2)
+            commands.fx - commands.cz - self.eps*z_axis[0],
+            commands.fz + commands.cx - commands.cy/2 - self.eps*z_axis[2])
         right_thrust = ThrusterVector(
-            commands.fx + commands.cz,
-            commands.fz - commands.cx - commands.cy/2)
+            commands.fx + commands.cz - self.eps*z_axis[0],
+            commands.fz - commands.cx - commands.cy/2 - self.eps*z_axis[2])
 
-        tail_thrust = commands.fz + commands.cy - self.eps
+        tail_thrust = commands.fz + commands.cy - self.eps*z_axis[2]
 
         left_norm: float = (left_thrust.f_x**2+left_thrust.f_z**2)**0.5
 
@@ -153,38 +158,52 @@ class Pilot:
             self.status = Status.RUNNING
             self.states_proxy["status"] = Status.RUNNING
 
-    def compute_desired_state(self, vector: ThrusterVector, reverse_spin: bool) -> Tuple[ThrusterState, bool]:
+    def compute_desired_state(self, vector: ThrusterVector, reversed_spin: bool) -> Tuple[ThrusterState, bool]:
         """mathematical conversion of the thrust vector into angle and thrust"""
 
         # Get axial commands from c_x
-        tau = (self.eps**2 + (1.0-self.eps**2)*vector.f_x**2)**0.5
-        if self.eps > 0:
-            phi = atan(vector.f_x/self.eps)
-        else:
-            phi = 0
+        # tau = (self.eps**2 + (1.0-self.eps**2)*vector.f_x**2)**0.5
+        # if self.eps > 0:
+        #     phi = atan(vector.f_x/self.eps)
+        # else:
+        #     phi = 0
 
         # Get full commands from axial commands and c_z
-        div = cos(phi) * tau - vector.f_z
-        tau = (tau**2 - 2*tau*vector.f_z*cos(phi)+vector.f_z**2)**0.5
-        if div != 0:
-            if div > 0:  # phi goes to the upper part of the area
-                phi = atan(sin(phi) * tau / div)
-            else:
-                if phi > 0:
-                    phi = atan(sin(phi) * tau / div) + pi
-                else:
-                    phi = atan(sin(phi) * tau / div) - pi
-        else:
+        # div = cos(phi) * tau - vector.f_z
+        # tau = (tau**2 - 2*tau*vector.f_z*cos(phi)+vector.f_z**2)**0.5
+        
+        tau = (vector.f_x**2 + vector.f_z**2)**0.5
+        
+        if vector.f_z > 0:
+            phi = atan(vector.f_x / vector.f_z)
+        elif vector.f_z < 0:
+            phi = atan(vector.f_x / vector.f_z)
             if phi > 0:
+                phi += pi
+            else:
+                phi -= pi
+            
+            
+            # if div > 0:  # phi goes to the upper part of the area
+            #     phi = atan(sin(phi) * tau / div)
+            # else:
+            #     if phi > 0:
+            #         phi = atan(sin(phi) * tau / div) + pi
+            #     else:
+            #         phi = atan(sin(phi) * tau / div) - pi
+        else:
+            if vector.f_x > 0:
                 phi = pi / 2
-            elif phi < 0:
+            elif vector.f_x < 0:
                 phi = - pi / 2
+            else:
+                phi = 0
 
-        if reverse_spin:
+        if reversed_spin:
             # should we use forward?
             if abs(phi) < self.forward_threshold:
-                reverse_spin = False
-                # state is already designed for a forward thrust, no change to make
+                reversed_spin = False
+                # state is already computed for a forward thrust, no change to make
             else:
                 # maintain reversed
                 phi, tau = self._reverse(phi, tau)
@@ -193,16 +212,16 @@ class Pilot:
             # should we use reverse?
             if abs(phi) > self.reverse_threshold:
                 phi, tau = self._reverse(phi, tau)
-                reverse_spin = True
+                reversed_spin = True
 
                 # tau becomes negative
 
         tau = bound(tau)
 
-        return ThrusterState(tau=tau, pos=self.angle_to_step_index(phi), thrust_coef=1.0), reverse_spin
+        return ThrusterState(tau=tau, pos=self.angle_to_step_index(phi), thrust_coef=1.0), reversed_spin
 
     def _reverse(self, phi, tau):
-        """returns the opposite state of the thruster that give the exact same thrust.
+        """returns the opposite state of the thruster that gives the exact same thrust.
 
         reverse_efficiency estimates the coef of efficiency of reverse thrust compared to 
         forward thrust. We increase reverse thrust to compensate this lower efficiency.

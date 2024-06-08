@@ -131,4 +131,4 @@ class Backend:
 
         commands = self.pid.get_correction(state, commands)
 
-        self.pilot.apply_setpoints(commands, bridle=self.feedbacks.bridled)
+        self.pilot.apply_setpoints(commands, state, bridle=self.feedbacks.bridled)

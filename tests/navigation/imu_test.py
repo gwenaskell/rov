@@ -1,6 +1,6 @@
 from typing import List
-from src.components.imu_simulator import Simulator, RovState
-from src.components.imu import IMU
+from src.lab.imu_simulator import Simulator
+from src.components.imu import IMU, RovState
 from src.components.accessors import AccelValue, CompassValue
 
 

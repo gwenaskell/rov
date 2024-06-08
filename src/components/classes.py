@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TypedDict
 
-
 @dataclass
 class Commands:
     fx: float  # forward thrust
@@ -68,20 +67,26 @@ class Feedbacks:
     status: Status = Status.STOPPED
 
 @dataclass
+class Quaternion:
+    w: float = 1
+    x: float = 0
+    y: float = 0
+    z: float = 0
+    
+@dataclass
 class RovState:
     # speed
     # vx: float
     # vy: float
     # vz: float
     # acceleration
-    ax: float
-    ay: float
-    az: float
-    # angle
-    thx: float
-    thy: float
-    thz: float
+    ax: float = 0
+    ay: float = 0
+    az: float = 0
+    # quaternion
+    q: Quaternion = Quaternion()
     # angular speed
-    wx: float
-    wy: float
-    wz: float
+    wx: float = 0
+    wy: float = 0 
+    wz: float = 0
+    

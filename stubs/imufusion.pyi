@@ -63,11 +63,11 @@ class Offset:
     def update(self, *args, **kwargs): ...
 
 class Quaternion:
-    w: Incomplete
+    w: float
     wxyz: Incomplete
-    x: Incomplete
-    y: Incomplete
-    z: Incomplete
+    x: float
+    y: float
+    z: float
     @classmethod
     def __init__(cls, *args, **kwargs) -> None: ...
     def to_euler(self, *args, **kwargs): ...

@@ -7,7 +7,7 @@ import imufusion
 from .accessors import IMU as _Imu_driver, Compass, AccelValue
 
 
-from .classes import RovState
+from .classes import RovState, Quaternion
 
 
 
@@ -95,9 +95,10 @@ class IMU:
             ax=a[0],
             ay=a[1],
             az=a[2],
-            thx=self.euler[0],
-            thy=self.euler[1],
-            thz=self.euler[2],
+            # thx=self.euler[0],
+            # thy=self.euler[1],
+            # thz=self.euler[2],
+            q=Quaternion(w=quat.w, x=quat.x, y=quat.y, z=quat.z),
             # vx=self.prev_state.vx + a[0]*dt,
             # vy=self.prev_state.vy + a[1]*dt,
             # vz=self.prev_state.vz + a[2]*dt,
