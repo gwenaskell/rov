@@ -7,7 +7,7 @@ from src.components.classes import RovState
 
 from src.components.tracker import SetpointsTracker
 
-from src.components.geometry import get_earth_axis_coordinates
+from src.components.geometry import get_earth_axis_coordinates, rotate_vector_by_quaternion
 
 from math import sin, cos, atan, pi
 
@@ -18,6 +18,8 @@ class Pilot:
 
     The thrusters are updated progressively in a separate process using the SetpointsTracker, by periodically 
     checking the desired state and incrementally moving the thrusters towards this state.
+    
+    The data bridge between the two processes is materialized by the field states_proxy
     """
 
     def __init__(self) -> None:
@@ -32,7 +34,7 @@ class Pilot:
 
         # angle threshold to switch to forward thrust
         self.forward_threshold = 40.0/180*pi + pi/2
-        # angle threshold to switch to reverse thrust
+        # angle threshold to switch to reverse thrust (hysteresis)
         self.reverse_threshold = 50.0/180*pi + pi/2
 
         self.status: Status = Status.STOPPED
@@ -94,19 +96,25 @@ class Pilot:
 
         if self.status == Status.STOPPED:
             raise RuntimeError("cannot apply setpoints: thrusters are stopped")
-
-        # TODO: apply proper coefs on cy depending on rov geometry and center of gravity
         
-        z_axis = get_earth_axis_coordinates(state.q)
+        if commands.surface:
+            left_thrust = ThrusterVector(commands.fx - commands.cz, 0)
+            right_thrust = ThrusterVector(commands.fx + commands.cz, 0)
+            tail_thrust = 0
+        else:
+            # zero z axis to erase the epsilon term if we don't want to maintain the rov underwater
+            z_axis = get_earth_axis_coordinates(state.q)
 
-        left_thrust = ThrusterVector(
-            commands.fx - commands.cz - self.eps*z_axis[0],
-            commands.fz + commands.cx - commands.cy/2 - self.eps*z_axis[2])
-        right_thrust = ThrusterVector(
-            commands.fx + commands.cz - self.eps*z_axis[0],
-            commands.fz - commands.cx - commands.cy/2 - self.eps*z_axis[2])
+            # TODO: apply proper coefs on cy depending on rov geometry and center of gravity
+            left_thrust = ThrusterVector(
+                commands.fx - commands.cz - self.eps*z_axis[0],
+                commands.fz + commands.cx - commands.cy/2 - self.eps*z_axis[2])
+            right_thrust = ThrusterVector(
+                commands.fx + commands.cz - self.eps*z_axis[0],
+                commands.fz - commands.cx - commands.cy/2 - self.eps*z_axis[2])
 
-        tail_thrust = commands.fz + commands.cy - self.eps*z_axis[2]
+            # tail motor is oriented towards the surface. A positive thrust pushes the ROV downwards.
+            tail_thrust = -(commands.fz + commands.cy - self.eps*z_axis[2])
 
         left_norm: float = (left_thrust.f_x**2+left_thrust.f_z**2)**0.5
 
@@ -136,17 +144,14 @@ class Pilot:
             tail_thrust /= tail_norm
 
         left_target_state, self.left_reversed = self.compute_desired_state(
-            left_thrust, self.left_reversed)
+            left_thrust, self.left_reversed, commands.surface)
         right_target_state, self.right_reversed = self.compute_desired_state(
-            right_thrust, self.right_reversed)
+            right_thrust, self.right_reversed, commands.surface)
 
         if bridle:
             left_target_state.tau *= 0.8
             right_target_state.tau *= 0.8
             tail_thrust *= 0.8
-
-        # print(left_target_state.pos, left_target_state.tau,
-        #       right_target_state.pos, right_target_state.tau)
 
         self.states_proxy["targets"] = {
             "tail_thrust": tail_thrust,
@@ -158,39 +163,23 @@ class Pilot:
             self.status = Status.RUNNING
             self.states_proxy["status"] = Status.RUNNING
 
-    def compute_desired_state(self, vector: ThrusterVector, reversed_spin: bool) -> Tuple[ThrusterState, bool]:
+    def compute_desired_state(self, vector: ThrusterVector, reversed_spin: bool, surface: bool) -> Tuple[ThrusterState, bool]:
         """mathematical conversion of the thrust vector into angle and thrust"""
-
-        # Get axial commands from c_x
-        # tau = (self.eps**2 + (1.0-self.eps**2)*vector.f_x**2)**0.5
-        # if self.eps > 0:
-        #     phi = atan(vector.f_x/self.eps)
-        # else:
-        #     phi = 0
-
-        # Get full commands from axial commands and c_z
-        # div = cos(phi) * tau - vector.f_z
-        # tau = (tau**2 - 2*tau*vector.f_z*cos(phi)+vector.f_z**2)**0.5
+        
+        if surface:
+            # we slightly orientate thurst downwards to maintain the ROV at the surface during movement, thus the *1.1
+            return ThrusterState(tau=vector.f_x, pos=self.angle_to_step_index(-pi/2*1.1)), vector.f_x < 0
         
         tau = (vector.f_x**2 + vector.f_z**2)**0.5
         
         if vector.f_z > 0:
             phi = atan(vector.f_x / vector.f_z)
+            if vector.f_x >= 0:
+                phi -= pi
+            else:
+                phi += pi
         elif vector.f_z < 0:
             phi = atan(vector.f_x / vector.f_z)
-            if phi > 0:
-                phi += pi
-            else:
-                phi -= pi
-            
-            
-            # if div > 0:  # phi goes to the upper part of the area
-            #     phi = atan(sin(phi) * tau / div)
-            # else:
-            #     if phi > 0:
-            #         phi = atan(sin(phi) * tau / div) + pi
-            #     else:
-            #         phi = atan(sin(phi) * tau / div) - pi
         else:
             if vector.f_x > 0:
                 phi = pi / 2

@@ -87,21 +87,13 @@ class IMU:
     def get_current_state(self) -> RovState:
         quat: imufusion.Quaternion = self.fusion.quaternion
         
-        angles: list = quat.to_euler()
-        
         a: list = self.fusion.linear_acceleration
         
         state = RovState(
             ax=a[0],
             ay=a[1],
             az=a[2],
-            # thx=self.euler[0],
-            # thy=self.euler[1],
-            # thz=self.euler[2],
             q=Quaternion(w=quat.w, x=quat.x, y=quat.y, z=quat.z),
-            # vx=self.prev_state.vx + a[0]*dt,
-            # vy=self.prev_state.vy + a[1]*dt,
-            # vz=self.prev_state.vz + a[2]*dt,
             wx=self.ang_speed[0],
             wy=self.ang_speed[1],
             wz=self.ang_speed[2],

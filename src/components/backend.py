@@ -26,6 +26,23 @@ class Inputs:
     c_wz: float
 
 
+class Switch:
+    def __init__(self, init_val = False) -> None:
+        self.bool = init_val
+        self.pressed = False
+    
+    def update(self, cur_state: bool) -> bool:
+        if cur_state:  # button pressed
+            if self.pressed:
+                # we already know it is pressed
+                return self.bool
+            self.pressed = True
+            self.bool = not self.bool
+        elif self.pressed: # button was released
+            self.pressed = False
+        return self.bool
+
+
 class Backend:
     def __init__(self) -> None:
         self.feedbacks: Feedbacks = Feedbacks()
@@ -35,6 +52,7 @@ class Backend:
         self.sensors = Sensors()
         self.exiting = False
         self.run_task: Optional[Task] = None
+        self.surface_switch = Switch(True)
 
         self._waiting_fresh_input: bool = False
 
@@ -120,14 +138,14 @@ class Backend:
                 return  # continue to wait
             self._waiting_fresh_input = False
 
+        surface_mode = self.surface_switch.update(inputs.buttons.L)
+
         commands = Commands(fx=float(inputs.sticks.leftX)/100, fz=0,
-                            cx=float(inputs.sticks.rightY)/100, cy=0,
-                            cz=-float(inputs.sticks.leftY)/100, tm_ms=inputs.tm_ms)
+                            cx=float(inputs.sticks.rightY)/100, cy=float(inputs.sticks.rightY)/100,
+                            cz=-float(inputs.sticks.leftY)/100, tm_ms=inputs.tm_ms, surface=surface_mode)
 
         if inputs.buttons.R:
             commands.fz = -float(inputs.sticks.rightX)/100
-        else:
-            commands.cy = float(inputs.sticks.rightX)/100
 
         commands = self.pid.get_correction(state, commands)
 

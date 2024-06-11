@@ -10,6 +10,7 @@ class Commands:
     cy: float  # pitch
     cz: float  # yaw
     tm_ms: int
+    surface: bool = True
 
 
 @dataclass

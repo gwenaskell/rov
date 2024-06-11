@@ -1,7 +1,7 @@
 from math import sin, cos, atan, acos, pi
 
 from src.components.pilot import Pilot
-from src.components.classes import Commands, NamespaceProxy, Status, TargetsProxy, ThrusterState, ThrusterVector, RovState, Quaternion
+from src.components.classes import Commands, Status, ThrusterState, RovState, Quaternion
 
 def bound(x):
     if x > 1:
@@ -18,7 +18,8 @@ class ControlCommand:
         self.reverse_efficiency = 0.8
         self.forward_threshold = 40/180*pi + pi/2
         self.reverse_threshold = 50/180*pi + pi/2
-        self.tau_l, self.phi_l, self.tau_r, self.phi_r = self._get_commands(0, 0, 0, 0)
+        
+        self.tau_l, self.phi_l, self.tau_r, self.phi_r, self.tau_tail = 0, 0, 0, 0, 0
         
         self.pilot = Pilot()
         self.pilot.status = Status.RUNNING
@@ -30,33 +31,36 @@ class ControlCommand:
                 "right_state": None,
             }
         }
+
+        self.update(0, 0, 0, 0, 0, Quaternion())
     
     def _steps_to_angle(self, steps):
         return 2*pi*steps / self.pilot.nb_stepper_steps
 
-    def update(self, c_x, c_delta, c_z, c_theta):
+    def update(self, f_x, f_z, c_x, c_y, c_z, q):
         self.pilot.apply_setpoints(
-            Commands(fx=c_x, fz=0, cx=c_delta, cz=c_z, cy=c_theta, tm_ms=0),
-            state=RovState(ax=0, ay=0, az=0, q=Quaternion(), wx=0, wy=0, wz=0),
+            Commands(fx=f_x, fz=f_z, cx=c_x, cy=c_y, cz=c_z, tm_ms=0),
+            state=RovState(ax=0, ay=0, az=0, q=q, wx=0, wy=0, wz=0),
         )
-        
+
         ls: ThrusterState = self.pilot.states_proxy['targets']['left_state']
         lr: ThrusterState = self.pilot.states_proxy['targets']['right_state']
+        self.tau_tail: ThrusterState = self.pilot.states_proxy['targets']['tail_thrust']
         
         self.tau_l, self.phi_l = ls.tau, self._steps_to_angle(ls.pos)
         self.tau_r, self.phi_r = lr.tau, self._steps_to_angle(lr.pos)
         
-        # self.tau_l, self.phi_l, self.tau_r, self.phi_r = self._get_commands(c_x, c_delta, c_z, c_theta)
+        # self.tau_l, self.phi_l, self.tau_r, self.phi_r = self._get_commands(f_x, c_x, c_y, c_z)
 
-    def _get_commands(self, c_x, c_delta, c_z, c_theta):
-        c_x_l = bound(c_x - c_delta)
-        c_x_r = bound(c_x + c_delta)
+    def _get_commands(self, f_x, c_x, c_y, c_z):
+        f_x_l = bound(f_x - c_x)
+        f_x_r = bound(f_x + c_x)
 
-        c_z_l = bound(c_z - c_theta)
-        c_z_r = bound(c_z + c_theta)
+        c_y_l = bound(c_y - c_z)
+        c_y_r = bound(c_y + c_z)
 
-        tau_l, phi_l = self._get_symmetric_commands(c_x_l, c_z_l)
-        tau_r, phi_r = self._get_symmetric_commands(c_x_r, c_z_r)
+        tau_l, phi_l = self._get_symmetric_commands(f_x_l, c_y_l)
+        tau_r, phi_r = self._get_symmetric_commands(f_x_r, c_y_r)
 
         return tau_l, phi_l, tau_r, phi_r
     
@@ -68,19 +72,19 @@ class ControlCommand:
         tau = -tau/self.reverse_efficiency # boost, since reverse rotation is less efficient
         return phi, tau
 
-    def _get_symmetric_commands(self, c_x, c_z):
-        c_z = c_z*abs(c_z)/2
+    def _get_symmetric_commands(self, f_x, c_y):
+        c_y = c_y*abs(c_y)/2
 
-        # Get axial commands from c_x
-        tau = (self.eps**2 + (1.0-self.eps**2)*c_x**2)**0.5
+        # Get axial commands from f_x
+        tau = (self.eps**2 + (1.0-self.eps**2)*f_x**2)**0.5
         if self.eps > 0:
-            phi = atan(c_x/self.eps)
+            phi = atan(f_x/self.eps)
         else:
             phi = 0
 
-        # Get full commands from axial commands and c_z
-        div = cos(phi) * tau - c_z
-        tau = (tau**2 - 2*tau*c_z*cos(phi)+c_z**2)**0.5
+        # Get full commands from axial commands and c_y
+        div = cos(phi) * tau - c_y
+        tau = (tau**2 - 2*tau*c_y*cos(phi)+c_y**2)**0.5
         if div != 0:
             if div > 0: # phi goes to the upper part of the area
                 phi = atan(sin(phi) * tau / div)

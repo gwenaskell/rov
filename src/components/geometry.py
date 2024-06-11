@@ -17,7 +17,7 @@ def rotate_vector_by_quaternion(v, q: Quaternion):
     # Conjugate of quaternion
     q_conj = [q.w, -q.x, -q.y, -q.z]
     # Rotate vector
-    v_q_prime = _q_multiply(_q_multiply(q, v_q), q_conj)
+    v_q_prime = _q_multiply(_q_multiply([q.w, q.x, q.y, q.z], v_q), q_conj)
     # Extract rotated vector
     return v_q_prime[1:]
 
@@ -29,7 +29,7 @@ def get_earth_axis_coordinates(q: Quaternion):
     q_conj = [q.w, -q.x, -q.y, -q.z]
     # Rotate vector
 
-    q_v_prod = [- q.z, - q.y, q.x, q.w]
+    q_v_prod = [- q.z, q.y, -q.x, q.w]
 
     v_q_prime = _q_multiply(q_v_prod, q_conj)
     # Extract rotated vector
