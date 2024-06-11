@@ -2,14 +2,14 @@ from multiprocessing import Manager, Process
 import time
 from typing import Tuple
 import typing
-from src.components.classes import Commands, NamespaceProxy, Status, TargetsProxy, ThrusterState, ThrusterVector
+from src.components.classes import Commands, NamespaceProxy, Status, ThrusterState, ThrusterVector
 from src.components.classes import RovState
 
 from src.components.tracker import SetpointsTracker
 
-from src.components.geometry import get_earth_axis_coordinates, rotate_vector_by_quaternion
+from src.components.geometry import get_earth_axis_coordinates
 
-from math import sin, cos, atan, pi
+from math import atan, pi
 
 
 class Pilot:
@@ -97,6 +97,18 @@ class Pilot:
         if self.status == Status.STOPPED:
             raise RuntimeError("cannot apply setpoints: thrusters are stopped")
         
+        max_thrust = 1
+        
+        if bridle:
+            max_thrust = 0.5
+            commands.fx *= 0.5
+            commands.fz *= 0.5
+            commands.cx *= 0.5
+            commands.cy *= 0.5
+            commands.cz *= 0.5
+            
+            # do not bridle self.eps! (except if it makes exceed max_thrust)
+        
         if commands.surface:
             left_thrust = ThrusterVector(commands.fx - commands.cz, 0)
             right_thrust = ThrusterVector(commands.fx + commands.cz, 0)
@@ -118,7 +130,7 @@ class Pilot:
 
         left_norm: float = (left_thrust.f_x**2+left_thrust.f_z**2)**0.5
 
-        if left_norm > 1:
+        if left_norm > max_thrust:
             left_thrust.f_x /= left_norm
             left_thrust.f_z /= left_norm
             right_thrust.f_x /= left_norm
@@ -127,7 +139,7 @@ class Pilot:
 
         right_norm: float = (right_thrust.f_x**2+right_thrust.f_z**2)**0.5
 
-        if right_norm > 1:
+        if right_norm > max_thrust:
             left_thrust.f_x /= right_norm
             left_thrust.f_z /= right_norm
             right_thrust.f_x /= right_norm
@@ -136,7 +148,7 @@ class Pilot:
 
         tail_norm = abs(tail_thrust)
 
-        if tail_norm > 1:
+        if tail_norm > max_thrust:
             left_thrust.f_x /= tail_norm
             left_thrust.f_z /= tail_norm
             right_thrust.f_x /= tail_norm
@@ -147,11 +159,6 @@ class Pilot:
             left_thrust, self.left_reversed, commands.surface)
         right_target_state, self.right_reversed = self.compute_desired_state(
             right_thrust, self.right_reversed, commands.surface)
-
-        if bridle:
-            left_target_state.tau *= 0.8
-            right_target_state.tau *= 0.8
-            tail_thrust *= 0.8
 
         self.states_proxy["targets"] = {
             "tail_thrust": tail_thrust,

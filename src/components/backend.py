@@ -53,6 +53,7 @@ class Backend:
         self.exiting = False
         self.run_task: Optional[Task] = None
         self.surface_switch = Switch(True)
+        self.bridled_switch = Switch(True)
 
         self._waiting_fresh_input: bool = False
 
@@ -107,7 +108,9 @@ class Backend:
                 if sensors_t is not None:
                     self.feedbacks.measurements = await sensors_t
 
-                self.feedbacks.bridled = Safety.must_bridle(
+                bridled = self.bridled_switch.update(inputs.buttons.L2)
+    
+                self.feedbacks.bridled = bridled or Safety.must_bridle(
                     self.feedbacks.measurements)
 
                 self._iter(inputs, imu_data)

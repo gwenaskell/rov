@@ -17,9 +17,9 @@ class GamePadButtons:
     B: bool = False
     X: bool = False
     Y: bool = False
-    L: bool = False  # surface mode
-    L2: bool = False
-    R: bool = False  # switch cx to fz
+    L: bool = False   # surface mode
+    L2: bool = False  # bridled mode
+    R: bool = False   # switch cx to fz
     R2: bool = False
     stickL: bool = False
     stickR: bool = False
