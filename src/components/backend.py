@@ -81,6 +81,9 @@ class Backend:
         
         create_task(self.imu.run())
         last_sensors_read = time()
+        tm = last_sensors_read
+        tick = tm
+
         while True:
             if self.exiting:
                 self.imu.stop()
@@ -89,10 +92,16 @@ class Backend:
 
             try:
                 sensors_t = None
+                
                 tm = time()
+                
                 if tm - last_sensors_read > 0.5:  # two times per second
                     sensors_t = create_task(self.sensors.read_sensors())
                     last_sensors_read = tm
+
+                self.feedbacks.tracker_iter_time_ms = self.pilot.get_feedbacks()["tracker_iter_time_ms"]
+
+                self.feedbacks.iter_ms = int(1000*(tm-tick))
 
                 try:
                     inputs = await wait_for(inputs_queue.get(), timeout=0.2)
@@ -114,13 +123,11 @@ class Backend:
 
                 self._iter(inputs, imu_data)
 
-                self.feedbacks.iter_ms = round(
-                    1000*(time()-tick)+self.feedbacks.iter_ms/2)
-
                 self.feedbacks.status = self.pilot.status
 
             except Exception as e:
-                print(e)
+                print("backend exception:", e)
+                await asyncio.sleep(1)
 
     def _set_waiting(self):
         self.pilot.switch_engines(Status.PAUSED)

@@ -53,14 +53,23 @@ class SetpointsTracker:
 
         paused = False
 
+        tm = time.time()
+        iter_time = 0
+        max_iter_time = 0
+
         try:
             while True:
                 tm = time.time()
+                max_iter_time = max(max_iter_time, iter_time)
 
                 # every 10 iterations, update target state
                 count_to_10 += 1
                 if count_to_10 == 10:
                     count_to_10 = 0
+                    
+                    states_proxy["feedbacks"] = {"tracker_iter_time_ms": int(1000*max_iter_time)}
+                    
+                    max_iter_time = iter_time
                     # withdraw new target states from proxy
 
                     status: Status = states_proxy["status"]
@@ -107,8 +116,12 @@ class SetpointsTracker:
                         self.thruster_right.get_thrust_coef()
 
                     self.thruster_tail.set_pwm(round(self.tail_thrust*100))
+                    
+                    tm2 = time.time()
 
-                    sleep("tail", self.min_step_time+tm - time.time())
+                    iter_time = tm2 - tm
+
+                    sleep("tail", self.min_step_time + tm - tm2)
                 except Exception as e:
                     print("setpoints tracker error:", e)
         finally:
@@ -167,14 +180,15 @@ class ThrusterController:
         self.status = Status.RUNNING
 
     def state_tracking_loop(self, other: 'ThrusterController', latch: CountDownLatch):
-        self.thruster.arm_thruster()
-
-        latch.count_down()
-        latch.wait()
         """This function ensures a smooth transition from the current thruster state to the target state.
 
         It assumes thrust speed transition is negligible compared to stepper rotation time.
         """
+        self.thruster.arm_thruster()
+
+        latch.count_down()
+        latch.wait()
+        
         while self.status != Status.STOPPED:
             try:
                 if self.status == Status.PAUSED:
@@ -219,7 +233,6 @@ class ThrusterController:
                 #     print(next_state)
 
                 self.state = next_state
-                
 
                 # do not use next_state.tau
                 self.thruster.set_pwm(round(next_state.tau*100))

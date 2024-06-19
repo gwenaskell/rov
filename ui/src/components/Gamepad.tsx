@@ -92,7 +92,7 @@ export default function Controller() {
   const connected = useSelector((state) => state.gamepad.connected)
 
   const buttonChangeHandler = (buttonName: string, down: boolean) => {
-    console.log("button", buttonName, down)
+    // console.log("button", buttonName, down)
     let button = mapButtonName(buttonName)
     if (!button) {
       return
@@ -117,7 +117,7 @@ export default function Controller() {
     value: number,
     _previousValue: number
   ) => {
-    console.log("axis", axisName, value)
+    // console.log("axis", axisName, value)
     let axis = mapAxisName(axisName)
 
     if (axis === "") {

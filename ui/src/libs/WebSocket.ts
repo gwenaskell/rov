@@ -57,7 +57,7 @@ export default class WS {
   }
 
   public static send(payload: string) {
-    console.log(payload)
+    // console.log(payload)
     WS.conn?.send(payload)
   }
 

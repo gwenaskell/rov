@@ -40,10 +40,13 @@ class TargetsProxy(TypedDict):
     right_state: ThrusterState
     tail_thrust: float
 
+class FeedbacksProxy(TypedDict):
+    tracker_iter_time_ms: int
 
 class NamespaceProxy(TypedDict):
     status: Status
     targets: TargetsProxy
+    feedbacks :FeedbacksProxy
 
 
 @dataclass
@@ -69,6 +72,8 @@ class Feedbacks:
     bridled: bool = False
 
     status: Status = Status.STOPPED
+
+    tracker_iter_time_ms: int = 0
 
 @dataclass
 class Euler:

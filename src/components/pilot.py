@@ -2,7 +2,7 @@ from multiprocessing import Manager, Process
 import time
 from typing import Tuple
 import typing
-from src.components.classes import Commands, NamespaceProxy, Status, ThrusterState, ThrusterVector
+from src.components.classes import Commands, NamespaceProxy, Status, ThrusterState, ThrusterVector, FeedbacksProxy
 from src.components.classes import RovState
 
 from src.components.tracker import SetpointsTracker
@@ -51,6 +51,9 @@ class Pilot:
                 "tail_thrust": 0,
                 "left_state": ThrusterState(pos=0, tau=0),
                 "right_state": ThrusterState(pos=0, tau=0),
+            },
+            "feedbacks": {
+                "tracker_iter_time_ms": 0,
             }
         }))
 
@@ -88,6 +91,9 @@ class Pilot:
         if self.tracker_process and self.tracker_process.is_alive():
             self.tracker_process.join()
             print("pilot: stopped")
+
+    def get_feedbacks(self) -> FeedbacksProxy:
+        return self.states_proxy["feedbacks"]
 
     def apply_setpoints(self, commands: Commands, state: RovState, bridle=False):
         """computes the target thrusters states corresponding to these commands.

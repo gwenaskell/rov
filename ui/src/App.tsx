@@ -12,7 +12,7 @@ import WS from "./libs/WebSocket"
 function App() {
   useEffect(() => {
     WS.open_connection((payload: string) => {
-      // console.log(payload);
+      // console.log(payload)
       store.dispatch(() => {})
     })
   })
