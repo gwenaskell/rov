@@ -9,6 +9,7 @@ from typing import Optional
 
 from starlette.websockets import WebSocketState
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 
 
 import json
@@ -19,6 +20,13 @@ from src.components.classes import Status
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins="*",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class WS:
     socket: Optional[WebSocket] = None
@@ -82,6 +90,8 @@ async def websocket_endpoint(websocket: WebSocket):
     WS.socket = websocket
 
     feedbacks_t = create_task(submit_feedbacks(websocket))
+    
+    print("socket opened")
 
     controls = GamePad(
         connected=False,
@@ -122,5 +132,5 @@ async def submit_feedbacks(websocket: WebSocket):
         await asyncio.sleep(0.3)
         try:
             await websocket.send_json(dataclasses.asdict(server.backend.feedbacks))
-        except WebSocketDisconnect:
+        except (WebSocketDisconnect, RuntimeError):
             return

@@ -14,10 +14,10 @@ from .accessors import Display
 class SetpointsTracker:
     def __init__(self) -> None:
         self.thruster_left = ThrusterController(
-            Thruster(id="left"), StepperMotor(id="left"))
+            Thruster(loc="left"), StepperMotor(loc="left"))
         self.thruster_right = ThrusterController(
-            Thruster(id="right"), StepperMotor(id="right"))
-        self.thruster_tail = Thruster(id="tail")
+            Thruster(loc="right"), StepperMotor(loc="right"))
+        self.thruster_tail = Thruster(loc="tail")
 
         self.tail_thrust = 0.0
 
@@ -67,10 +67,11 @@ class SetpointsTracker:
                     if status == Status.STOPPED:
                         print("stopped tracking setpoints")
                         return
-                    if status == Status.PAUSED and not paused:
-                        print("pausing thrusters")
-                        self._pause()
-                        paused = True
+                    if status == Status.PAUSED:
+                        if not paused:
+                            print("pausing thrusters")
+                            self._pause()
+                            paused = True
                     else:
                         targets: TargetsProxy = states_proxy["targets"]
 
@@ -109,7 +110,7 @@ class SetpointsTracker:
 
                     sleep("tail", self.min_step_time+tm - time.time())
                 except Exception as e:
-                    print(e)
+                    print("setpoints tracker error:", e)
         finally:
             self.thruster_left.stop()
             self.thruster_right.stop()
@@ -218,6 +219,7 @@ class ThrusterController:
                 #     print(next_state)
 
                 self.state = next_state
+                
 
                 # do not use next_state.tau
                 self.thruster.set_pwm(round(next_state.tau*100))
@@ -241,13 +243,15 @@ class ThrusterController:
                     continue
 
             except Exception as e:
-                print(e)
+                print("thruster controller error:", e)
 
             # here the sleep time is arbitrary
             sleep(self.thruster.id, self.step_time)
 
         self.thruster.stop()
         self.stepper.stop()
+        
+        print("thruster and stepper stopped")
 
     def increment_state(self, current: ThrusterState, target: ThrusterState, opposite_delta: int) -> ThrusterState:
         new = ThrusterState(tau=current.tau, pos=current.pos, thrust_coef=1.0)

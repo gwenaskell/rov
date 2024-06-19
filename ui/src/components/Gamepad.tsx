@@ -1,17 +1,17 @@
-import { Chip } from "@mui/material";
-import Gamepad from "react-gamepad";
-import CancelIcon from "@mui/icons-material/Cancel";
-import DoneIcon from "@mui/icons-material/Done";
+import { Chip } from "@mui/material"
+import Gamepad from "../gamepad"
+import CancelIcon from "@mui/icons-material/Cancel"
+import DoneIcon from "@mui/icons-material/Done"
 import {
   setAxis,
   setButton,
   setConnected,
   AxisType,
   ButtonType,
-} from "../store/gamepadSlice";
-import { useDispatch, useSelector } from "../store/hooks";
-import WS from "../libs/WebSocket";
-import { store } from "../store/store";
+} from "../store/gamepadSlice"
+import { useDispatch, useSelector } from "../store/hooks"
+import WS from "../libs/WebSocket"
+import { store } from "../store/store"
 
 // https://dev.to/whoisryosuke/adding-game-controller-input-to-react-5d13
 
@@ -19,9 +19,9 @@ const layout = {
   buttons: [
     "A",
     "B",
-    "LB",
-    "X",
     "Y",
+    "X",
+    "LB",
     "RB",
     "LT",
     "RT",
@@ -30,15 +30,27 @@ const layout = {
     "Back",
     "Start",
     "DPadUp",
+    "DPadDown",
     "DPadLeft",
     "DPadRight",
-    "DPadDown",
+    "Unknown1",
+    "Unknown2",
+    "Unknown3",
   ],
-  axis: ["leftY", "-leftX", "rightY", "-rightX", null, null, "padY", "-padX"],
+  axis: [
+    "leftY",
+    "-leftX",
+    "padY",
+    "-padX",
+    "rightY",
+    "-rightX",
+    "Unknown1",
+    "Unknown2",
+  ],
   //buttonAxis: [null, null, null, null, null, null, 'LeftTrigger', 'RightTrigger']
-};
+}
 
-function mapAxisName(axis: string): AxisType | '' {
+function mapAxisName(axis: string): AxisType | "" {
   switch (axis) {
     case "leftX":
     case "leftY":
@@ -46,41 +58,42 @@ function mapAxisName(axis: string): AxisType | '' {
     case "rightY":
     case "padX":
     case "padY":
-      return axis;
+      return axis
   }
-  return '';
+  return ""
 }
 
-function mapButtonName(button: string): ButtonType | '' {
+function mapButtonName(button: string): ButtonType | "" {
   switch (button) {
     case "LT":
-      return "L";
-    case "LS":
-      return "L2";
+      return "L2"
+    case "LB":
+      return "L"
     case "RT":
-      return "R";
-    case "RS":
-      return "R2";
+      return "R2"
+    case "RB":
+      return "R"
     case "A":
     case "B":
     case "X":
     case "Y":
-      return button;
+      return button
     case "DPadLeft":
-      return "stickL";
+      return "stickL"
     case "DPadRight":
-      return "stickR";
+      return "stickR"
   }
-  return '';
+  return ""
 }
 
 export default function Controller() {
-  const dispatch = useDispatch();
+  const dispatch = useDispatch()
 
-  const connected = useSelector((state) => state.gamepad.connected);
+  const connected = useSelector((state) => state.gamepad.connected)
 
   const buttonChangeHandler = (buttonName: string, down: boolean) => {
-    let button = mapButtonName(buttonName);
+    console.log("button", buttonName, down)
+    let button = mapButtonName(buttonName)
     if (!button) {
       return
     }
@@ -90,46 +103,58 @@ export default function Controller() {
         axis: button,
         down: down,
       })
-    );
+    )
 
-    let state = store.getState();
+    let state = store.getState()
 
-    WS.send(JSON.stringify({tm: Date.now(), buttons: state.gamepad.buttons}));
-
-    console.log("button", buttonName, down);
-  };
+    WS.send(
+      JSON.stringify({ tm_ms: Date.now(), buttons: state.gamepad.buttons })
+    )
+  }
 
   const axisChangeHandler = (
     axisName: string,
     value: number,
     _previousValue: number
   ) => {
-    let axis = mapAxisName(axisName);
-    if (axis === '') {
-      return;
+    console.log("axis", axisName, value)
+    let axis = mapAxisName(axisName)
+
+    if (axis === "") {
+      return
     }
 
-    value = Math.round(value * 20)*5;
+    value = Math.round(value * 20) * 5
 
     dispatch(
       setAxis({
         axis: axis,
         value: value,
       })
-    );
+    )
 
-    let state = store.getState();
+    let state = store.getState()
 
-    WS.send(JSON.stringify({tm_ms: Date.now(), sticks: state.gamepad.sticks}));
+    WS.send(JSON.stringify({ tm_ms: Date.now(), sticks: state.gamepad.sticks }))
+  }
 
-    console.log("axis", axisName, value);
-  };
+  const onConnect = () => {
+    dispatch(setConnected(true))
+
+    WS.setGMConnection(true)
+  }
+
+  const onDisconnect = () => {
+    dispatch(setConnected(false))
+
+    WS.setGMConnection(false)
+  }
 
   return (
     <Gamepad
       layout={layout as any}
-      onConnect={() => dispatch(setConnected(true))}
-      onDisconnect={() => dispatch(setConnected(false))}
+      onConnect={onConnect}
+      onDisconnect={onDisconnect}
       onButtonChange={buttonChangeHandler}
       onAxisChange={axisChangeHandler}
       deadZone={0.01}
@@ -148,5 +173,5 @@ export default function Controller() {
         sx={{ fontSize: 12 }}
       />
     </Gamepad>
-  );
+  )
 }

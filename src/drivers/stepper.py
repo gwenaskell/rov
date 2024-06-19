@@ -21,7 +21,7 @@ stepper_resolutions = {  # informative
 
 
 class StepperMotor:
-    def __init__(self, id: Union[Literal["left"], Literal["right"]]) -> None:
+    def __init__(self, loc: Union[Literal["left"], Literal["right"]]) -> None:
         self.step_position = 0
 
         self.nb_steps = NB_STEPS
@@ -34,7 +34,7 @@ class StepperMotor:
         self.spin = False  # rotation spin (clockwise / anticlockwise)
         self.last_transition = False
 
-        if id == "left":
+        if loc == "left":
             self.driver = StepperLeft
         else:
             self.driver = StepperRight

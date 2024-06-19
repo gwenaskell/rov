@@ -39,7 +39,7 @@ class ControlCommand:
 
     def update(self, f_x, f_z, c_x, c_y, c_z, q):
         self.pilot.apply_setpoints(
-            Commands(fx=f_x, fz=f_z, cx=c_x, cy=c_y, cz=c_z, tm_ms=0),
+            Commands(fx=f_x, fz=f_z, cx=c_x, cy=c_y, cz=c_z, tm_ms=0, surface=False),
             state=RovState(ax=0, ay=0, az=0, q=q, wx=0, wy=0, wz=0),
         )
 

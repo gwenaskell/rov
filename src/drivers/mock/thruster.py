@@ -1,12 +1,12 @@
 
-from typing import Literal, Union
+from typing import Literal
 from .plot import plotter
 
 
 class Thruster:
-    def __init__(self, id: Union[Literal["left"], Literal["right"], Literal["tail"]]) -> None:
+    def __init__(self, loc: Literal["left", "right", "tail"]) -> None:
         self.armed = False
-        self.id = id
+        self.id = loc
         self.ratio = 0
 
     def set_pwm(self, ratio: int):

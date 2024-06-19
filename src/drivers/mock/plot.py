@@ -22,35 +22,44 @@ class Plotter:
         self.tau_l, self.phi_l, self.tau_r, self.phi_r, self.tau_t = 0.0, 0.0, 0.0, 0.0, 0.0
 
         self.stop = False
+        
+        self.p = None
 
     def inputs_loop(self, p: Queue):
         try:
             phi_l = self.phi_l
             while not self.stop:
-                time.sleep(0.1)
+                time.sleep(0.05)
                 
                 ok = False
                 if self.phi_l != phi_l:
-                    tm = round(time.time()*1000)
                     ok = True
-                p.put([self.tau_l, self.phi_l, self.tau_r, self.phi_r, self.tau_t])
+                try:
+                    p.put([self.tau_l, self.phi_l, self.tau_r, self.phi_r, self.tau_t], timeout=1)
+                except:
+                    print("display queue timeout")
+                    continue
                 if ok:
                     # print(self.phi_l-phi_l, round(time.time()*1000)-tm)
                     phi_l = self.phi_l
         finally:
-            p.put("stop")
+            print("display: sending stop")
+            p.put("stop", timeout=5)
+            print("display: exited inputs loop")
 
     def start_display(self):
         print("starting display")
         """start_display must be calls from the same process which runs the thrusters and steppers"""
         queue = Queue(maxsize=1)
-        p = multiprocessing.Process(target=self.plot, args=(queue,))
-        p.start()
+        self.p = multiprocessing.Process(target=self.plot, args=(queue,))
+        self.p.start()
         Thread(target=self.inputs_loop, args=(queue,)).start()
 
     def stop_display(self):
         """stop_display must be run from the same process which called start_display"""
         self.stop = True
+        if self.p:
+            self.p.join()
 
     def plot(self, p: Queue):
         # plt.ion()  # interactive mode
@@ -62,7 +71,9 @@ class Plotter:
         # make a square figure
         self.fig = plt.figure(figsize=(20, 12))
         self.left_ax = self.fig.add_axes([0.05, 0.3, 0.4, 0.6], polar=True)
+        self.left_ax.set_theta_zero_location('N')
         self.right_ax = self.fig.add_axes([0.55, 0.3, 0.4, 0.6], polar=True)
+        self.right_ax.set_theta_zero_location('N')
         self.tail_ax = self.fig.add_axes(
             [0.48, 0.3, 0.04, 0.5], xlim=(-0.1, 0.1), ylim=(-100, 100))
 
@@ -94,7 +105,7 @@ class Plotter:
                 if data == "stop":
                     break
                 tau_l, phi_l, tau_r, phi_r, tau_t = data[0], data[1], data[2], data[3], data[4]
-
+                # print(tau_l, phi_l, tau_r, phi_r)
                 
                 if ok and tau_l == 100:
                     ok = False
@@ -120,6 +131,7 @@ class Plotter:
                 # self.right_ax.autoscale_view(True, True, True)
                 # self.tail_ax.autoscale_view(True, True, True)
                 self.fig.canvas.draw()
+                
             except:
                 break
 
@@ -129,11 +141,16 @@ class Plotter:
     def make_arrow(self, axis, tau, phi, real=False):
         (facecolor, edgecolor, alpha) = ('blue', 'blue',
                                          0.3) if real else ('green', 'black', 0.6)
+        if abs(tau) < 0.05:
+            if tau >= 0:
+                tau += 0.05
+            else:
+                tau -= 0.05
         if tau >= 0:
-            return axis.add_patch(Arrow(phi-0.5*3.14, 0.001, 0, tau, alpha=alpha, width=0.2,
+            return axis.add_patch(Arrow(phi, 0.001, 0, tau, alpha=alpha, width=0.2,
                                         edgecolor=edgecolor, facecolor=facecolor, lw=3, zorder=5))
         else:
-            return axis.add_patch(Arrow(phi-0.5*3.14, abs(tau), 0, 0.001 + tau, alpha=alpha, width=0.4,
+            return axis.add_patch(Arrow(phi, abs(tau), 0, 0.001 + tau, alpha=alpha, width=0.4,
                                         edgecolor=edgecolor, facecolor=facecolor, lw=3, zorder=5))
 
     def make_tail_arrow(self, tau, real=False):

@@ -34,7 +34,7 @@ class IMU:
 
         self.fusion = imufusion.Ahrs()
         
-        self.prev_state: RovState = RovState(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+        self.prev_state: RovState = RovState(0, 0, 0, Quaternion(), 0, 0, 0, 0)
         
         self.offset = imufusion.Offset(100)
 

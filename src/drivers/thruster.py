@@ -6,15 +6,15 @@ from src.drivers.mappings import SwitchLeft, SwitchRight, SwitchTail, ThrusterLe
 
 
 class Thruster:
-    def __init__(self, id: Union[Literal["left"], Literal["right"], Literal["tail"]]) -> None:
+    def __init__(self, loc: Union[Literal["left"], Literal["right"], Literal["tail"]]) -> None:
         self.max_value = 2000
         self.min_value = 700
         self.zero_value = 1000
 
-        if id == "right":
+        if loc == "right":
             self.driver = ThrusterRight
             self.switch = SwitchRight
-        elif id == "left":
+        elif loc == "left":
             self.driver = ThrusterLeft
             self.switch = SwitchLeft
         else:
@@ -23,7 +23,7 @@ class Thruster:
 
         self.armed = False
         self.perc = 0
-        self.id = id
+        self.id = loc
 
     def set_pwm(self, perc: int):
         if not self.armed:

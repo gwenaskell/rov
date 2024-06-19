@@ -1,25 +1,21 @@
-import React, { useEffect } from "react";
-import { store } from "./store/store";
-import logo from "./logo.svg";
-import "./App.css";
-import LeftControls from "./components/LeftControls";
-import Rightcontrols from "./components/RightControls";
-import { Grid } from "@mui/material";
-import Header from "./components/Header";
-import Video from "./components/Video";
-import WS from "./libs/WebSocket";
-
+import React, { useEffect } from "react"
+import { store } from "./store/store"
+import logo from "./logo.svg"
+import "./App.css"
+import LeftControls from "./components/LeftControls"
+import Rightcontrols from "./components/RightControls"
+import { Grid } from "@mui/material"
+import Header from "./components/Header"
+import Video from "./components/Video"
+import WS from "./libs/WebSocket"
 
 function App() {
   useEffect(() => {
-    WS.open_connection(
-      (payload: string) => {
-        console.log(payload);
-        store.dispatch(()=>{
-        });
-      }
-    );
-  });
+    WS.open_connection((payload: string) => {
+      // console.log(payload);
+      store.dispatch(() => {})
+    })
+  })
 
   return (
     <div className="App">
@@ -46,7 +42,7 @@ function App() {
         </Grid>
       </Grid>
     </div>
-  );
+  )
 }
 
-export default App;
+export default App

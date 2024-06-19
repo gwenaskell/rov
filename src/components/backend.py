@@ -2,7 +2,7 @@ import asyncio
 import os
 from time import time
 
-from src.api.classes import GamePad
+from src.api.classes import GamePad, GamePadSticks
 from src.components.safety import Safety
 from src.components.sensors import Sensors
 
@@ -54,7 +54,6 @@ class Backend:
         self.run_task: Optional[Task] = None
         self.surface_switch = Switch(True)
         self.bridled_switch = Switch(True)
-
         self._waiting_fresh_input: bool = False
 
     async def stop(self):
@@ -74,8 +73,8 @@ class Backend:
         self._waiting_fresh_input = False  # override
         self.pilot.switch_engines(status)
 
+
     async def _run(self, inputs_queue: Queue):
-        self.pilot.init()
         inputs: GamePad = GamePad(connected=False)
 
         self.feedbacks.measurements = await self.sensors.read_sensors()
@@ -143,13 +142,20 @@ class Backend:
 
         surface_mode = self.surface_switch.update(inputs.buttons.L)
 
-        commands = Commands(fx=float(inputs.sticks.leftX)/100, fz=0,
-                            cx=float(inputs.sticks.rightY)/100, cy=float(inputs.sticks.rightY)/100,
-                            cz=-float(inputs.sticks.leftY)/100, tm_ms=inputs.tm_ms, surface=surface_mode)
+        commands = Commands(fx=float(inputs.sticks.leftX)/100,
+                            fz=0,
+                            cx=float(inputs.sticks.rightY)/100,
+                            cy=0,
+                            cz=-float(inputs.sticks.leftY)/100,
+                            tm_ms=inputs.tm_ms, surface=surface_mode)
 
         if inputs.buttons.R:
             commands.fz = -float(inputs.sticks.rightX)/100
+        else:
+            commands.cy = float(inputs.sticks.rightX)/100
 
-        commands = self.pid.get_correction(state, commands)
+        self.pid.apply_correction(state, commands)
+
+        # print(commands)
 
         self.pilot.apply_setpoints(commands, state, bridle=self.feedbacks.bridled)
