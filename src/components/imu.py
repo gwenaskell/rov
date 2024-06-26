@@ -7,7 +7,7 @@ import imufusion
 from .accessors import IMU as _Imu_driver, Compass, AccelValue
 
 
-from .classes import RovState, Quaternion
+from .classes import RovState, Quaternion, Vec
 
 
 
@@ -34,7 +34,7 @@ class IMU:
 
         self.fusion = imufusion.Ahrs()
         
-        self.prev_state: RovState = RovState(0, 0, 0, Quaternion(), 0, 0, 0, 0)
+        self.prev_state: RovState = RovState()
         
         self.offset = imufusion.Offset(100)
 
@@ -49,7 +49,7 @@ class IMU:
         
         self.euler = [0, 0, 0]
 
-        self.ang_speed = [0, 0, 0]
+        self.ang_speed = Vec()
 
         self._stop = False
     
@@ -78,9 +78,9 @@ class IMU:
         
         angles: list = quat.to_euler()
 
-        self.ang_speed[0]=_modulo(angles[0] - self.euler[0])/dt
-        self.ang_speed[1]=_modulo(angles[1] - self.euler[1])/dt
-        self.ang_speed[2]=_modulo(angles[2] - self.euler[2])/dt
+        self.ang_speed.x=_modulo(angles[0] - self.euler[0])/dt
+        self.ang_speed.y=_modulo(angles[1] - self.euler[1])/dt
+        self.ang_speed.z=_modulo(angles[2] - self.euler[2])/dt
         
         self.euler = angles
 
@@ -90,13 +90,11 @@ class IMU:
         a: list = self.fusion.linear_acceleration
         
         state = RovState(
-            ax=a[0],
-            ay=a[1],
-            az=a[2],
+            a=Vec(a[0], a[1], a[2]),
             q=Quaternion(w=quat.w, x=quat.x, y=quat.y, z=quat.z),
-            wx=self.ang_speed[0],
-            wy=self.ang_speed[1],
-            wz=self.ang_speed[2],
+            wx=self.ang_speed.x,
+            wy=self.ang_speed.y,
+            wz=self.ang_speed.z,
         )
 
         self.prev_state = state

@@ -233,14 +233,8 @@ class Vec:
 
 @dataclass
 class RovState:
-    # speed
-    # vx: float
-    # vy: float
-    # vz: float
     # acceleration
-    ax: float = 0
-    ay: float = 0
-    az: float = 0
+    a: Vec = Vec()
     # quaternion
     q: Quaternion = Quaternion()
     # angular speed
