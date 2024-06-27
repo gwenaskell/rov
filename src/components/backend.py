@@ -111,6 +111,8 @@ class Backend:
 
                 imu_data = self.imu.get_current_state()
 
+                self.feedbacks.euler = imu_data.q.to_euler()
+
                 if sensors_t is not None:
                     self.feedbacks.measurements = await sensors_t
 

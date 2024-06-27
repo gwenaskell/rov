@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 from enum import Enum
 from typing import TypedDict
-from math import atan2, asin, pi
+from .utils.math import atan2, Rad, safe_asin
 from time import time
+
 
 @dataclass
 class Commands:
@@ -40,13 +41,15 @@ class TargetsProxy(TypedDict):
     right_state: ThrusterState
     tail_thrust: float
 
+
 class FeedbacksProxy(TypedDict):
     tracker_iter_time_ms: int
+
 
 class NamespaceProxy(TypedDict):
     status: Status
     targets: TargetsProxy
-    feedbacks :FeedbacksProxy
+    feedbacks: FeedbacksProxy
 
 
 @dataclass
@@ -62,9 +65,18 @@ class Measurements:
     in_water: bool = False
     immerged: bool = False
 
+
+@dataclass
+class Euler:
+    x: Rad = Rad(0)
+    y: Rad = Rad(0)
+    z: Rad = Rad(0)
+
+
 @dataclass
 class Feedbacks:
     """feedbacks to the user"""
+
     measurements: Measurements = Measurements()
 
     iter_ms: int = 0
@@ -75,21 +87,9 @@ class Feedbacks:
 
     tracker_iter_time_ms: int = 0
 
-@dataclass
-class Euler:
-    x: float
-    y: float
-    z: float
-    
-def safe_asin(value):
-    if value <= -1.0:
-        return pi / -2.0
-    
-    if value >= 1.0:
-        return  pi / 2.0
-    
-    return asin(value)
-    
+    euler: Euler = Euler()
+
+
 @dataclass
 class Quaternion:
     w: float = 1
@@ -102,10 +102,10 @@ class Quaternion:
 
         q1 = self
         return Quaternion(
-            q1.w*q2.w - q1.x*q2.x - q1.y*q2.y - q1.z*q2.z,
-            q1.w*q2.x + q1.x*q2.w + q1.y*q2.z - q1.z*q2.y,
-            q1.w*q2.y - q1.x*q2.z + q1.y*q2.w + q1.z*q2.x,
-            q1.w*q2.z + q1.x*q2.y - q1.y*q2.x + q1.z*q2.w
+            q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z,
+            q1.w * q2.x + q1.x * q2.w + q1.y * q2.z - q1.z * q2.y,
+            q1.w * q2.y - q1.x * q2.z + q1.y * q2.w + q1.z * q2.x,
+            q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w,
         )
 
     def conj(self) -> "Quaternion":
@@ -137,80 +137,66 @@ class Quaternion:
 
     def to_euler(self) -> Euler:
         """return the ZYX euler angles rotation corresponding to the quaternion"""
-        
+
         half_min_y2 = 0.5 - self.y**2
-        
+
         return Euler(
-            x=atan2(self.w*self.x+self.y*self.z, half_min_y2-self.x**2),
-            y=safe_asin(2.0*(self.w*self.y-self.z*self.x)),
-            z=atan2(self.w*self.z+self.x*self.y, half_min_y2-self.z**2)
+            x=Rad(atan2(self.w * self.x + self.y * self.z, half_min_y2 - self.x**2)),
+            y=Rad(safe_asin(2.0 * (self.w * self.y - self.z * self.x))),
+            z=Rad(atan2(self.w * self.z + self.x * self.y, half_min_y2 - self.z**2)),
         )
 
     def to_matrix(self):
         """return the corresponding rotation matrix"""
         ww = self.w**2
-        wx = self.w*self.x
-        wy = self.w*self.y
-        wz = self.w*self.z
-        xy = self.x*self.y
-        yz = self.y*self.z
-        xz = self.x*self.z
-        
+        wx = self.w * self.x
+        wy = self.w * self.y
+        wz = self.w * self.z
+        xy = self.x * self.y
+        yz = self.y * self.z
+        xz = self.x * self.z
+
         return [
             [
-                2.0 * (ww-0.5*self.x**2),
-                2.0 * (xy-wz),
-                2.0 * (xz+wy),
+                2.0 * (ww - 0.5 * self.x**2),
+                2.0 * (xy - wz),
+                2.0 * (xz + wy),
             ],
             [
-                2.0 * (xy+wz),
-                2.0 * (ww-0.5*self.y**2),
-                2.0 * (yz-wx),
+                2.0 * (xy + wz),
+                2.0 * (ww - 0.5 * self.y**2),
+                2.0 * (yz - wx),
             ],
             [
-                2.0 * (xz-wy),
-                2.0 * (yz+wx),
-                2.0 * (ww-0.5*self.z**2),
-            ]
+                2.0 * (xz - wy),
+                2.0 * (yz + wx),
+                2.0 * (ww - 0.5 * self.z**2),
+            ],
         ]
+
 
 @dataclass
 class Vec:
     """vector"""
+
     x: float = 0
     y: float = 0
     z: float = 0
-    
+
     def __add__(self, v: "Vec"):
-        return Vec(
-            x=self.x+v.x,
-            y=self.y+v.y,
-            z=self.z+v.z
-        )
-    
+        return Vec(x=self.x + v.x, y=self.y + v.y, z=self.z + v.z)
+
     def __sub__(self, v: "Vec"):
-        return Vec(
-            x=self.x-v.x,
-            y=self.y-v.y,
-            z=self.z-v.z
-        )
-    
+        return Vec(x=self.x - v.x, y=self.y - v.y, z=self.z - v.z)
+
     def __mul__(self, c: float):
-        return Vec(
-            x=self.x*c,
-            y=self.y*c,
-            z=self.z*c
-        )
+        return Vec(x=self.x * c, y=self.y * c, z=self.z * c)
 
     def __rmul__(self, c: float):
         return self.__mul__(c)
 
     def __truediv__(self, c: float):
-        return Vec(
-            x=self.x/c,
-            y=self.y/c,
-            z=self.z/c
-        )
+        return Vec(x=self.x / c, y=self.y / c, z=self.z / c)
 
     def __getitem__(self, i: int) -> float:
         if i == 0:
@@ -231,6 +217,7 @@ class Vec:
         else:
             return IndexError(i)
 
+
 @dataclass
 class RovState:
     # acceleration
@@ -239,11 +226,10 @@ class RovState:
     q: Quaternion = Quaternion()
     # angular speed
     wx: float = 0
-    wy: float = 0 
+    wy: float = 0
     wz: float = 0
     time: float = 0
-    
+
     def __post_init__(self):
         if self.time == 0:
             self.time = time()
-

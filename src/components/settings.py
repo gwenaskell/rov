@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 from typing import Iterable, Callable, ClassVar, Self
+from .utils.math import Deg
 
 
 class BaseSettings(BaseModel):
@@ -56,9 +57,9 @@ class PilotSettings(BaseSettings):
     # ratio applied to cy for front engines
     cy_engines_ratio: float = Field(gt=0, le=1)
     # angle threshold to switch to forward thrust
-    forward_threshold: float = Field(ge=90, lt=180)
+    forward_threshold: Deg = Field(ge=90, lt=180)
     # angle threshold to switch to reverse thrust (hysteresis)
-    reverse_threshold: float = Field(ge=90, lt=180)
+    reverse_threshold: Deg = Field(ge=90, lt=180)
 
     @model_validator(mode="after")
     def _validate_hysteresis(self) -> Self:
@@ -107,7 +108,7 @@ Settings(
         reverse_efficiency=0.9,
         bridle_coef=0.5,
         cy_engines_ratio=0.6,
-        forward_threshold=130,
-        reverse_threshold=140,
+        forward_threshold=Deg(130),
+        reverse_threshold=Deg(140),
     ),
 ).apply()

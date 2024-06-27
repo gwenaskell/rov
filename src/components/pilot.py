@@ -10,7 +10,7 @@ from src.components.geometry import get_earth_axis_coordinates
 
 from src.components.settings import PilotSettings
 
-from math import atan2, pi
+from src.components.utils.math import atan2, pi, Rad, rad
 
 
 class Pilot:
@@ -58,8 +58,8 @@ class Pilot:
     def settings(self) -> PilotSettings:
         return PilotSettings.get()
 
-    def angle_to_step_index(self, angle: float) -> int:
-        return round(angle * self.nb_stepper_steps / (2 * pi))
+    def angle_to_step_index(self, angle: Rad) -> int:
+        return round(angle * 2 / pi * self.nb_stepper_steps)
 
     def _start_tracker_process(self):
         self.tracker_process = Process(target=self.tracker.run, args=(self.states_proxy,))
@@ -186,6 +186,8 @@ class Pilot:
             self.status = Status.RUNNING
             self.states_proxy["status"] = Status.RUNNING
 
+    _surface_angle_: Rad = pi / -2 * 1.1
+
     def compute_desired_state(
         self, vector: ThrusterVector, reversed_spin: bool, surface: bool
     ) -> Tuple[ThrusterState, bool]:
@@ -193,7 +195,7 @@ class Pilot:
 
         if surface:
             # we slightly orientate thurst downwards to maintain the ROV at the surface during movement, thus the *1.1
-            return ThrusterState(tau=vector.f_x, pos=self.angle_to_step_index(-pi / 2 * 1.1)), vector.f_x < 0
+            return ThrusterState(tau=vector.f_x, pos=self.angle_to_step_index(self._surface_angle_)), vector.f_x < 0
 
         tau = (vector.f_x**2 + vector.f_z**2) ** 0.5
 
@@ -201,7 +203,7 @@ class Pilot:
 
         if reversed_spin:
             # should we use forward?
-            if abs(phi) < self.settings.forward_threshold:
+            if abs(phi) < rad(self.settings.forward_threshold):
                 reversed_spin = False
                 # state is already computed for a forward thrust, no change to make
             else:
@@ -210,7 +212,7 @@ class Pilot:
 
         else:
             # should we use reverse?
-            if abs(phi) > self.settings.reverse_threshold:
+            if abs(phi) > rad(self.settings.reverse_threshold):
                 phi, tau = self._reverse(phi, tau)
                 reversed_spin = True
 
@@ -220,13 +222,13 @@ class Pilot:
 
         return ThrusterState(tau=tau, pos=self.angle_to_step_index(phi), thrust_coef=1.0), reversed_spin
 
-    def _reverse(self, phi, tau):
+    def _reverse(self, phi: Rad, tau: float) -> tuple[Rad, float]:
         """returns the opposite state of the thruster that gives the exact same thrust.
 
         reverse_efficiency estimates the coef of efficiency of reverse thrust compared to
         forward thrust. We increase reverse thrust to compensate this lower efficiency.
         """
-        if phi > 0:
+        if phi > Rad(0):
             phi = phi - pi
         else:
             phi = phi + pi
