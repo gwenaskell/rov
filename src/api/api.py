@@ -17,6 +17,7 @@ import json
 from src.api.classes import GamePad, GamePadButtons, GamePadSticks
 from src.components.backend import Backend
 from src.components.classes import Status
+from src.components.settings import Settings
 
 app = FastAPI()
 
@@ -27,6 +28,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 class WS:
     socket: Optional[WebSocket] = None
@@ -70,11 +72,20 @@ class EnginesState(BaseModel):
     paused: bool
 
 
+@app.get("/settings")
+def get_settings():
+    return Settings.get()
+
+
+@app.put("/settings")
+def apply_settings(settings: Settings):
+    Settings.apply_settings(settings)
+
+
 @app.put("/engines")
 def set_engines_state(state: EnginesState):
     if state.on:
-        server.backend.switch_engines(
-            Status.PAUSED if state.paused else Status.RUNNING)
+        server.backend.switch_engines(Status.PAUSED if state.paused else Status.RUNNING)
     else:
         server.backend.switch_engines(Status.STOPPED)
 
@@ -90,14 +101,10 @@ async def websocket_endpoint(websocket: WebSocket):
     WS.socket = websocket
 
     feedbacks_t = create_task(submit_feedbacks(websocket))
-    
+
     print("socket opened")
 
-    controls = GamePad(
-        connected=False,
-        sticks=GamePadSticks(),
-        buttons=GamePadButtons(),
-        tm_ms=0)
+    controls = GamePad(connected=False, sticks=GamePadSticks(), buttons=GamePadButtons(), tm_ms=0)
     try:
         while True:
             try:
@@ -120,7 +127,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 await server.queue.put(controls)
             except Exception as e:
-                print("failed to parse "+data, e)
+                print("failed to parse " + data, e)
     finally:
         print("closing socket")
         WS.socket = None

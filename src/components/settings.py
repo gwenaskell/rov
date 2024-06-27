@@ -77,8 +77,8 @@ class Settings(BaseSettings):
         return (self.pid, self.pilot)
 
     @classmethod
-    def apply_settings(cls, new_settings_json: str):
-        new_settings = cls.model_validate_json(new_settings_json)
+    def apply_settings(cls, new_settings: "Settings"):
+        # new_settings = cls.model_validate_json(new_settings_json)
 
         new_settings.apply()
 
